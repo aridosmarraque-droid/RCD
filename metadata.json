@@ -1,0 +1,6 @@
+{
+  "name": "Gestión RCD - Planta de Residuos & Certificados",
+  "description": "Aplicación móvil y portal web para planta de tratamiento de Residuos de Construcción y Demolición (RCD) con OCR de albaranes SAP, trazabilidad fotográfica de camiones y emisión de certificados a terceros.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
