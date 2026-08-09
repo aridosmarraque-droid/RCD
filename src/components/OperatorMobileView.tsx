@@ -90,7 +90,20 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
         if (extractedData.licensePlate && extractedData.licensePlate.trim()) {
           setLicensePlate(extractedData.licensePlate.trim().toUpperCase());
         }
-        if (extractedData.date) setDateStr(extractedData.date);
+        if (extractedData.date) {
+          let rawDate = extractedData.date.trim();
+          if (rawDate.includes('/')) {
+            const parts = rawDate.split('/');
+            if (parts.length === 3) {
+              let day = parts[0].padStart(2, '0');
+              let month = parts[1].padStart(2, '0');
+              let year = parts[2];
+              if (year.length === 2) year = `20${year}`;
+              rawDate = `${year}-${month}-${day}`;
+            }
+          }
+          setDateStr(rawDate);
+        }
         if (extractedData.time) setTimeStr(extractedData.time);
 
         if (extractedData.notes) {
@@ -859,3 +872,4 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     </div>
   );
 };
+
