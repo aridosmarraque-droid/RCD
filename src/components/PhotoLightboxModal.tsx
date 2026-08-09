@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, Calendar, MapPin, Truck, CheckCircle2 } from 'lucide-react';
-import { Albaran } from '@/types/rcd';
+import { Albaran } from '../types/rcd';
 
 interface PhotoLightboxModalProps {
   albaran: Albaran | null;

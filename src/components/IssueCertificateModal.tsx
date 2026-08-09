@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Lock, AlertTriangle, FileText, Check, X, Building2, MapPin } from 'lucide-react';
-import { Albaran, Certificate, Client } from '@/types/rcd';
-import { RCDService } from '@/services/rcdStorage';
-import { openPrintableCertificate } from '@/utils/certificatePdf';
+import { Albaran, Certificate, Client } from '../types/rcd';
+import { RCDService } from '../services/rcdStorage';
+import { openPrintableCertificate } from '../utils/certificatePdf';
 
 interface IssueCertificateModalProps {
   isOpen: boolean;

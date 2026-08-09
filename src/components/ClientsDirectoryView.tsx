@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Users, Mail, Phone, CheckSquare, Square, Save, CheckCircle2, ShieldCheck, Search, Building2 } from 'lucide-react';
-import { Client } from '@/types/rcd';
-import { RCDService } from '@/services/rcdStorage';
+import { Client } from '../types/rcd';
+import { RCDService } from '../services/rcdStorage';
 
 interface ClientsDirectoryViewProps {
   clients: Client[];

@@ -13,11 +13,11 @@ import {
   RefreshCw,
   Search
 } from 'lucide-react';
-import { Albaran, Certificate, Client } from '@/types/rcd';
-import { ClientsDirectoryView } from '@/components/ClientsDirectoryView';
-import { PhotoLightboxModal } from '@/components/PhotoLightboxModal';
-import { openPrintableCertificate } from '@/utils/certificatePdf';
-import { IssueCertificateModal } from '@/components/IssueCertificateModal';
+import { Albaran, Certificate, Client } from '../types/rcd';
+import { ClientsDirectoryView } from './ClientsDirectoryView';
+import { PhotoLightboxModal } from './PhotoLightboxModal';
+import { openPrintableCertificate } from '../utils/certificatePdf';
+import { IssueCertificateModal } from './IssueCertificateModal';
 
 interface AdminPlantViewProps {
   clients: Client[];

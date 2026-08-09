@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Database, MessageSquare, Check, Copy, AlertTriangle, Save, Send, Sparkles, Server } from 'lucide-react';
-import { SupabaseService } from '@/services/supabaseClient';
-import { UltramsgService } from '@/services/ultramsgService';
+import { SupabaseService } from '../services/supabaseClient';
+import { UltramsgService } from '../services/ultramsgService';
 
 interface SettingsModalProps {
   isOpen: boolean;
