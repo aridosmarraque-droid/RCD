@@ -14,10 +14,10 @@ import {
   RefreshCw,
   Info
 } from 'lucide-react';
-import { Albaran, OCRScanResult, WasteType } from '../types/rcd';
-import { OFFICIAL_WASTE_TYPES, RCDService } from '../services/rcdStorage';
-import { generateSampleSapTickets, SampleSapTicket } from '../utils/mockSapTicket';
-import { watermarkTruckPhoto } from '../utils/photoWatermark';
+import { Albaran, OCRScanResult, WasteType } from '@/types/rcd';
+import { OFFICIAL_WASTE_TYPES, RCDService } from '@/services/rcdStorage';
+import { generateSampleSapTickets, SampleSapTicket } from '@/utils/mockSapTicket';
+import { watermarkTruckPhoto } from '@/utils/photoWatermark';
 
 interface OperatorMobileViewProps {
   onAlbaranCreated: (albaran: Albaran) => void;
