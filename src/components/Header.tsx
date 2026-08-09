@@ -1,5 +1,5 @@
 import React from 'react';
-import { Truck, ShieldCheck, Users, Smartphone, Factory, RefreshCw } from 'lucide-react';
+import { Truck, ShieldCheck, Users, Smartphone, Factory, Settings, Database } from 'lucide-react';
 
 export type AppMode = 'operator' | 'client' | 'admin';
 
@@ -9,7 +9,8 @@ interface HeaderProps {
   selectedClientId: string;
   setSelectedClientId: (id: string) => void;
   clientsList: { id: string; name: string; code: string }[];
-  onResetData: () => void;
+  onOpenSettings: () => void;
+  isSupabaseConfigured: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,7 +19,8 @@ export const Header: React.FC<HeaderProps> = ({
   selectedClientId,
   setSelectedClientId,
   clientsList,
-  onResetData,
+  onOpenSettings,
+  isSupabaseConfigured,
 }) => {
   return (
     <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-40 shadow-md">
@@ -34,21 +36,28 @@ export const Header: React.FC<HeaderProps> = ({
               <div>
                 <div className="flex items-center space-x-2">
                   <h1 className="font-bold text-lg text-white leading-tight">Planta RCD EcoMarraque</h1>
-                  <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2 py-0.5 rounded-full font-medium border border-emerald-500/30 hidden md:inline-block">
-                    SAP BO Sync
-                  </span>
+                  {isSupabaseConfigured ? (
+                    <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2 py-0.5 rounded-full font-medium border border-emerald-500/30 flex items-center space-x-1">
+                      <Database className="w-3 h-3" />
+                      <span>Supabase BBDD</span>
+                    </span>
+                  ) : (
+                    <span className="bg-amber-500/20 text-amber-400 text-xs px-2 py-0.5 rounded-full font-medium border border-amber-500/30">
+                      BBDD Pendiente
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-slate-400">Residuos de Construcción y Demolición</p>
               </div>
             </div>
 
-            {/* Mobile Mode Badges */}
+            {/* Mobile Settings Button */}
             <button
-              onClick={onResetData}
-              title="Restablecer datos de prueba"
-              className="sm:hidden text-slate-400 hover:text-white p-1.5 rounded-lg border border-slate-800"
+              onClick={onOpenSettings}
+              title="Configuración BBDD Supabase y Ultramsg"
+              className="sm:hidden text-slate-400 hover:text-white p-2 rounded-lg border border-slate-800 bg-slate-950"
             >
-              <RefreshCw className="w-4 h-4" />
+              <Settings className="w-4 h-4 text-emerald-400" />
             </button>
           </div>
 
@@ -91,7 +100,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
 
-          {/* Right Controls (Client Selector for Portal Mode & Reset Button) */}
+          {/* Right Controls */}
           <div className="hidden lg:flex items-center space-x-3">
             {mode === 'client' && (
               <div className="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
@@ -102,22 +111,26 @@ export const Header: React.FC<HeaderProps> = ({
                   onChange={(e) => setSelectedClientId(e.target.value)}
                   className="bg-slate-900 text-white text-xs font-semibold rounded-md px-2 py-1 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 >
-                  {clientsList.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.code} - {c.name}
-                    </option>
-                  ))}
+                  {clientsList.length > 0 ? (
+                    clientsList.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.code} - {c.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">Sin clientes registrados</option>
+                  )}
                 </select>
               </div>
             )}
 
             <button
-              onClick={onResetData}
-              title="Restablecer datos iniciales de demo"
-              className="flex items-center space-x-1.5 text-xs text-slate-400 hover:text-emerald-400 bg-slate-800/60 hover:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 transition"
+              onClick={onOpenSettings}
+              title="Configurar Supabase BBDD y Ultramsg WhatsApp"
+              className="flex items-center space-x-1.5 text-xs text-slate-300 hover:text-white bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-lg border border-emerald-500/30 transition font-medium"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Demo Reset</span>
+              <Settings className="w-4 h-4" />
+              <span>Ajustes BBDD / WhatsApp</span>
             </button>
           </div>
 
