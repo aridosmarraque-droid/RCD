@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { Albaran, OCRScanResult, WasteType } from '@/types/rcd';
 import { OFFICIAL_WASTE_TYPES, RCDService } from '@/services/rcdStorage';
-import { generateSampleSapTickets, SampleSapTicket } from '@/utils/mockSapTicket';
 import { watermarkTruckPhoto } from '@/utils/photoWatermark';
 
 interface OperatorMobileViewProps {
@@ -34,8 +33,8 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
   const [clientName, setClientName] = useState('');
   const [wasteTypeCode, setWasteTypeCode] = useState('17 01 01');
   const [wasteTypeName, setWasteTypeName] = useState('Hormigón y Piedra (Escombro Limpio)');
-  const [quantityTons, setQuantityTons] = useState<number>(15.0);
-  const [licensePlate, setLicensePlate] = useState('8492-KZX');
+  const [quantityTons, setQuantityTons] = useState<number>(0);
+  const [licensePlate, setLicensePlate] = useState('');
   const [dateStr, setDateStr] = useState(new Date().toISOString().split('T')[0]);
   const [timeStr, setTimeStr] = useState(
     new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
@@ -53,8 +52,6 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
 
   // Step 4: Final Submission state
   const [submittedAlbaran, setSubmittedAlbaran] = useState<Albaran | null>(null);
-
-  const sampleTickets = generateSampleSapTickets();
 
   // Handle image upload / camera capture for SAP ticket OCR
   const handleAlbaranImageSelected = async (file: File) => {
@@ -104,29 +101,9 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
       }
     } catch (err) {
       console.error('Error running OCR:', err);
-      // Fallback with realistic auto-fill if server error
-      if (!numAlbaran) setNumAlbaran(`ALB-2026-${Math.floor(10000 + Math.random() * 90000)}`);
-      if (!clientName) setClientName('Construcciones y Excavaciones García S.L.');
-      if (!clientCode) setClientCode('C-00104');
     } finally {
       setIsScanning(false);
     }
-  };
-
-  // Quick selector for Sample SAP tickets
-  const handleSelectSampleTicket = async (sample: SampleSapTicket) => {
-    setAlbaranPhoto(sample.svgDataUrl);
-    setNumAlbaran(sample.numAlbaran);
-    setClientCode(sample.clientCode);
-    setClientName(sample.clientName);
-    setWasteTypeCode(sample.wasteTypeCode);
-    setWasteTypeName(sample.wasteTypeName);
-    setQuantityTons(sample.quantityTons);
-    setLicensePlate(sample.licensePlate);
-    setScanNotes(`Escaneado de albarán de báscula SAP - Conductor: ${sample.driverName}`);
-    
-    // Also trigger server-side OCR simulation
-    await runGeminiOCR(sample.svgDataUrl, 'image/svg+xml');
   };
 
   // Handle Truck Photo capture & Watermark
@@ -312,29 +289,6 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                 <Sparkles className="w-3 h-3 text-purple-400" />
                 <span>Gemini AI Vision</span>
               </span>
-            </div>
-
-            {/* Quick Demo Selector for Sample SAP Tickets */}
-            <div className="mb-5 bg-slate-950/80 border border-slate-800 rounded-xl p-3">
-              <label className="block text-xs font-semibold text-slate-400 mb-2 flex items-center space-x-1">
-                <Info className="w-3.5 h-3.5 text-sky-400" />
-                <span>¿No tienes albarán impreso a mano? Prueba un ticket de muestra de SAP:</span>
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {sampleTickets.map((sample) => (
-                  <button
-                    key={sample.id}
-                    onClick={() => handleSelectSampleTicket(sample)}
-                    className="text-left p-2.5 rounded-lg border border-slate-800 hover:border-emerald-500/60 bg-slate-900 hover:bg-slate-800 transition group"
-                  >
-                    <div className="font-bold text-xs text-emerald-400 group-hover:text-emerald-300">
-                      {sample.numAlbaran}
-                    </div>
-                    <div className="text-[11px] text-slate-300 truncate font-medium">{sample.clientName}</div>
-                    <div className="text-[10px] text-slate-400 truncate">{sample.wasteTypeName}</div>
-                  </button>
-                ))}
-              </div>
             </div>
 
             {/* Photo Capture or Upload Buttons */}
