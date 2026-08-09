@@ -14,7 +14,7 @@ import {
   RefreshCw,
   Info
 } from 'lucide-react';
-import { Albaran, OCRScanResult } from '../types/rcd';
+import { Albaran, OCRScanResult, WasteType } from '../types/rcd';
 import { OFFICIAL_WASTE_TYPES, RCDService } from '../services/rcdStorage';
 import { generateSampleSapTickets, SampleSapTicket } from '../utils/mockSapTicket';
 import { watermarkTruckPhoto } from '../utils/photoWatermark';
@@ -93,7 +93,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
       if (data.notes) setScanNotes(data.notes);
 
       if (data.wasteTypeCode) {
-        const matched = OFFICIAL_WASTE_TYPES.find((w) => w.code === data.wasteTypeCode);
+        const matched = OFFICIAL_WASTE_TYPES.find((w: WasteType) => w.code === data.wasteTypeCode);
         if (matched) {
           setWasteTypeCode(matched.code);
           setWasteTypeName(matched.name);
@@ -463,7 +463,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                 <select
                   value={wasteTypeCode}
                   onChange={(e) => {
-                    const matched = OFFICIAL_WASTE_TYPES.find((w) => w.code === e.target.value);
+                    const matched = OFFICIAL_WASTE_TYPES.find((w: WasteType) => w.code === e.target.value);
                     if (matched) {
                       setWasteTypeCode(matched.code);
                       setWasteTypeName(matched.name);
@@ -471,7 +471,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                   }}
                   className="w-full bg-slate-950 text-white font-medium text-xs sm:text-sm border border-slate-800 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none"
                 >
-                  {OFFICIAL_WASTE_TYPES.map((wt) => (
+                  {OFFICIAL_WASTE_TYPES.map((wt: WasteType) => (
                     <option key={wt.code} value={wt.code}>
                       LER {wt.code} - {wt.name} ({wt.pricePerTon} €/t)
                     </option>
