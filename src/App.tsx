@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Header, AppMode } from './components/Header';
-import { OperatorMobileView } from './components/OperatorMobileView';
-import { ClientPortalView } from './components/ClientPortalView';
-import { AdminPlantView } from './components/AdminPlantView';
-import { RCDService } from './services/rcdStorage';
-import { Client, Albaran, Certificate } from './types/rcd';
+import { Header, AppMode } from '@/components/Header';
+import { OperatorMobileView } from '@/components/OperatorMobileView';
+import { ClientPortalView } from '@/components/ClientPortalView';
+import { AdminPlantView } from '@/components/AdminPlantView';
+import { RCDService } from '@/services/rcdStorage';
+import { Client, Albaran, Certificate } from '@/types/rcd';
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>('operator');
