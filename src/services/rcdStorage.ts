@@ -1,4 +1,6 @@
 import { Albaran, Certificate, Client, WasteType } from '@/types/rcd';
+import { SupabaseService } from './supabaseClient';
+import { UltramsgService } from './ultramsgService';
 
 export const OFFICIAL_WASTE_TYPES: WasteType[] = [
   {
@@ -53,219 +55,24 @@ export const OFFICIAL_WASTE_TYPES: WasteType[] = [
 ];
 
 const STORAGE_KEYS = {
-  CLIENTS: 'rcd_app_clients_v2',
-  ALBARANES: 'rcd_app_albaranes_v2',
-  CERTIFICATES: 'rcd_app_certificates_v2',
+  CLIENTS: 'rcd_app_clients_v3',
+  ALBARANES: 'rcd_app_albaranes_v3',
+  CERTIFICATES: 'rcd_app_certificates_v3',
 };
 
-// Seed default clients if empty
-const INITIAL_CLIENTS: Client[] = [
-  {
-    id: 'cli-01',
-    code: 'C-00104',
-    name: 'Construcciones y Excavaciones García S.L.',
-    cif: 'B-91823746',
-    email: 'obras@garciaconstrucciones.com',
-    mobile: '+34 612 345 678',
-    notifyEmail: true,
-    notifyMobile: true,
-    address: 'Pol. Ind. Carretera de Amarilla, Parc. 14, Sevilla',
-    contactPerson: 'Carlos García Ruiz',
-    createdAt: '2026-01-15T09:00:00.000Z',
-  },
-  {
-    id: 'cli-02',
-    code: 'C-00218',
-    name: 'Transportes y Derribos Marraque Hnos.',
-    cif: 'B-41982301',
-    email: 'logistica@marraquederribos.es',
-    mobile: '+34 689 901 234',
-    notifyEmail: true,
-    notifyMobile: false,
-    address: 'Av. de la Innovación 8, Dos Hermanas',
-    contactPerson: 'Manuel Marraque',
-    createdAt: '2026-02-01T10:30:00.000Z',
-  },
-  {
-    id: 'cli-03',
-    code: 'C-00350',
-    name: 'Promociones del Sur Inmobiliaria S.A.',
-    cif: 'A-28901234',
-    email: 'administracion@promosurinmobiliaria.com',
-    mobile: '+34 654 321 098',
-    notifyEmail: true,
-    notifyMobile: true,
-    address: 'C/ Sierpes 45, Planta 2, Sevilla',
-    contactPerson: 'Elena Benítez',
-    createdAt: '2026-03-10T12:00:00.000Z',
-  },
-  {
-    id: 'cli-04',
-    code: 'C-00412',
-    name: 'Obras y Reformas Triana C.B.',
-    cif: 'E-91029384',
-    email: 'info@reformastriana.es',
-    mobile: '+34 677 889 900',
-    notifyEmail: false,
-    notifyMobile: true,
-    address: 'C/ San Jacinto 112, Sevilla',
-    contactPerson: 'Joaquín Morales',
-    createdAt: '2026-04-05T08:15:00.000Z',
-  },
-];
+// DEMO DATA CLEARED AS REQUESTED BY USER
+const INITIAL_CLIENTS: Client[] = [];
+const INITIAL_ALBARANES: Albaran[] = [];
+const INITIAL_CERTIFICATES: Certificate[] = [];
 
-// Seed default sample albaranes with photographic traceability
-const INITIAL_ALBARANES: Albaran[] = [
-  {
-    id: 'alb-1001',
-    numAlbaran: 'ALB-2026-08490',
-    clientId: 'cli-01',
-    clientName: 'Construcciones y Excavaciones García S.L.',
-    clientCode: 'C-00104',
-    date: '2026-08-05',
-    time: '08:45',
-    wasteTypeCode: '17 01 01',
-    wasteTypeName: 'Hormigón y Piedra (Escombro Limpio)',
-    quantityTons: 14.85,
-    licensePlate: '8492-KZX',
-    driverName: 'Antonio Delgado',
-    plantZone: 'Báscula 1 - Muelle Norte',
-    gpsCoords: '37.3891° N, 5.9845° W',
-    certified: false,
-    createdAt: '2026-08-05T08:45:00.000Z',
-    notificationsSent: {
-      mobileSent: true,
-      emailSent: true,
-      timestamp: '2026-08-05T08:46:12.000Z',
-    },
-  },
-  {
-    id: 'alb-1002',
-    numAlbaran: 'ALB-2026-08491',
-    clientId: 'cli-01',
-    clientName: 'Construcciones y Excavaciones García S.L.',
-    clientCode: 'C-00104',
-    date: '2026-08-05',
-    time: '10:30',
-    wasteTypeCode: '17 05 04',
-    wasteTypeName: 'Tierras y Piedras de Excavación',
-    quantityTons: 22.40,
-    licensePlate: '8492-KZX',
-    driverName: 'Antonio Delgado',
-    plantZone: 'Báscula 2 - Sector Tierras',
-    gpsCoords: '37.3892° N, 5.9847° W',
-    certified: false,
-    createdAt: '2026-08-05T10:30:00.000Z',
-    notificationsSent: {
-      mobileSent: true,
-      emailSent: true,
-      timestamp: '2026-08-05T10:31:05.000Z',
-    },
-  },
-  {
-    id: 'alb-1003',
-    numAlbaran: 'ALB-2026-08492',
-    clientId: 'cli-02',
-    clientName: 'Transportes y Derribos Marraque Hnos.',
-    clientCode: 'C-00218',
-    date: '2026-08-05',
-    time: '11:15',
-    wasteTypeCode: '17 09 04',
-    wasteTypeName: 'Residuos Mezclados RCD (Escombro Sucio / Mezcla)',
-    quantityTons: 11.20,
-    licensePlate: '4102-LPT',
-    driverName: 'Marcos Marraque',
-    plantZone: 'Fosa de Triaje A-1',
-    gpsCoords: '37.3890° N, 5.9842° W',
-    certified: false,
-    createdAt: '2026-08-05T11:15:00.000Z',
-    notificationsSent: {
-      mobileSent: false,
-      emailSent: true,
-      timestamp: '2026-08-05T11:16:00.000Z',
-    },
-  },
-  {
-    id: 'alb-1004',
-    numAlbaran: 'ALB-2026-08480',
-    clientId: 'cli-01',
-    clientName: 'Construcciones y Excavaciones García S.L.',
-    clientCode: 'C-00104',
-    date: '2026-08-01',
-    time: '09:20',
-    wasteTypeCode: '17 01 01',
-    wasteTypeName: 'Hormigón y Piedra (Escombro Limpio)',
-    quantityTons: 16.50,
-    licensePlate: '9012-GHT',
-    driverName: 'Francisco López',
-    plantZone: 'Báscula 1',
-    certified: true,
-    certificateId: 'cert-2026-0012',
-    certificateNumber: 'CERT-RCD-2026-0012',
-    createdAt: '2026-08-01T09:20:00.000Z',
-  },
-  {
-    id: 'alb-1005',
-    numAlbaran: 'ALB-2026-08481',
-    clientId: 'cli-01',
-    clientName: 'Construcciones y Excavaciones García S.L.',
-    clientCode: 'C-00104',
-    date: '2026-08-01',
-    time: '14:10',
-    wasteTypeCode: '17 01 02',
-    wasteTypeName: 'Ladrillos, Tejas y Cerámica',
-    quantityTons: 9.80,
-    licensePlate: '9012-GHT',
-    driverName: 'Francisco López',
-    plantZone: 'Báscula 1',
-    certified: true,
-    certificateId: 'cert-2026-0012',
-    certificateNumber: 'CERT-RCD-2026-0012',
-    createdAt: '2026-08-01T14:10:00.000Z',
-  },
-];
-
-const INITIAL_CERTIFICATES: Certificate[] = [
-  {
-    id: 'cert-2026-0012',
-    certificateNumber: 'CERT-RCD-2026-0012',
-    issueDate: '2026-08-02',
-    clientId: 'cli-01',
-    clientName: 'Construcciones y Excavaciones García S.L.',
-    clientCif: 'B-91823746',
-    thirdPartyName: 'Ayuntamiento de Sevilla - Gerencia de Urbanismo',
-    thirdPartyCif: 'P-4109100J',
-    constructionSiteName: 'Rehabilitación Integral Edificio Av. Constitución 12',
-    constructionSiteAddress: 'Av. de la Constitución 12, Sevilla',
-    albaranIds: ['alb-1004', 'alb-1005'],
-    wasteBreakdown: [
-      {
-        wasteTypeCode: '17 01 01',
-        wasteTypeName: 'Hormigón y Piedra (Escombro Limpio)',
-        totalTons: 16.50,
-        albaranesCount: 1,
-      },
-      {
-        wasteTypeCode: '17 01 02',
-        wasteTypeName: 'Ladrillos, Tejas y Cerámica',
-        totalTons: 9.80,
-        albaranesCount: 1,
-      },
-    ],
-    totalTons: 26.30,
-    issuerName: 'Responsable Medioambiental Planta RCD EcoMarraque',
-    verificationCode: 'VERIF-2026-RCD-9812A',
-    status: 'Emitido',
-  },
-];
-
-// Helper functions for localStorage persistence
 export class RCDService {
+  // ===============================================
+  // CLIENTS MANAGEMENT
+  // ===============================================
   static getClients(): Client[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.CLIENTS);
       if (!data) {
-        localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(INITIAL_CLIENTS));
         return INITIAL_CLIENTS;
       }
       return JSON.parse(data);
@@ -274,40 +81,70 @@ export class RCDService {
     }
   }
 
-  static saveClients(clients: Client[]): void {
+  static async loadClientsFromRemote(): Promise<Client[]> {
+    if (SupabaseService.isConfigured()) {
+      try {
+        const remoteClients = await SupabaseService.fetchClients();
+        this.saveClientsLocal(remoteClients);
+        return remoteClients;
+      } catch (err) {
+        console.error('Error al cargar clientes de Supabase:', err);
+      }
+    }
+    return this.getClients();
+  }
+
+  static saveClientsLocal(clients: Client[]): void {
     localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(clients));
+  }
+
+  static async saveClients(clients: Client[]): Promise<void> {
+    this.saveClientsLocal(clients);
+    if (SupabaseService.isConfigured()) {
+      for (const client of clients) {
+        try {
+          await SupabaseService.upsertClient(client);
+        } catch (e) {
+          console.error('Failed to sync client to Supabase:', e);
+        }
+      }
+    }
   }
 
   static getClientById(id: string): Client | undefined {
     return this.getClients().find((c) => c.id === id);
   }
 
-  static updateClientNotificationSettings(
+  static async updateClientNotificationSettings(
     id: string,
     notifyEmail: boolean,
     notifyMobile: boolean,
     email?: string,
     mobile?: string
-  ): Client | null {
+  ): Promise<Client | null> {
     const clients = this.getClients();
     const index = clients.findIndex((c) => c.id === id);
     if (index === -1) return null;
 
-    clients[index] = {
+    const updated: Client = {
       ...clients[index],
       notifyEmail,
       notifyMobile,
-      ...(email ? { email } : {}),
-      ...(mobile ? { mobile } : {}),
+      ...(email !== undefined ? { email } : {}),
+      ...(mobile !== undefined ? { mobile } : {}),
     };
-    this.saveClients(clients);
-    return clients[index];
+
+    clients[index] = updated;
+    await this.saveClients(clients);
+    return updated;
   }
 
-  static upsertClientFromScan(clientCode: string, clientName: string): Client {
+  static async upsertClientFromScan(clientCode: string, clientName: string): Promise<Client> {
     const clients = this.getClients();
     let existing = clients.find(
-      (c) => c.code.toLowerCase() === clientCode.toLowerCase() || c.name.toLowerCase() === clientName.toLowerCase()
+      (c) =>
+        (clientCode && c.code.toLowerCase() === clientCode.toLowerCase()) ||
+        (clientName && c.name.toLowerCase() === clientName.toLowerCase())
     );
 
     if (existing) {
@@ -317,25 +154,27 @@ export class RCDService {
     const newClient: Client = {
       id: `cli-${Date.now()}`,
       code: clientCode || `C-${Math.floor(1000 + Math.random() * 9000)}`,
-      name: clientName,
+      name: clientName || 'Cliente No Identificado',
       cif: 'B-' + Math.floor(10000000 + Math.random() * 90000000),
-      email: `contacto@${clientName.toLowerCase().replace(/[^a-z0-9]/g, '')}.es`,
-      mobile: '+34 6' + Math.floor(10000000 + Math.random() * 90000000),
+      email: `contacto@${(clientName || 'cliente').toLowerCase().replace(/[^a-z0-9]/g, '')}.es`,
+      mobile: '+346' + Math.floor(10000000 + Math.random() * 90000000),
       notifyEmail: true,
       notifyMobile: true,
       createdAt: new Date().toISOString(),
     };
 
     clients.push(newClient);
-    this.saveClients(clients);
+    await this.saveClients(clients);
     return newClient;
   }
 
+  // ===============================================
+  // ALBARANES MANAGEMENT
+  // ===============================================
   static getAlbaranes(): Albaran[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.ALBARANES);
       if (!data) {
-        localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(INITIAL_ALBARANES));
         return INITIAL_ALBARANES;
       }
       return JSON.parse(data);
@@ -344,15 +183,30 @@ export class RCDService {
     }
   }
 
-  static saveAlbaranes(albaranes: Albaran[]): void {
+  static async loadAlbaranesFromRemote(): Promise<Albaran[]> {
+    if (SupabaseService.isConfigured()) {
+      try {
+        const remoteAlbaranes = await SupabaseService.fetchAlbaranes();
+        this.saveAlbaranesLocal(remoteAlbaranes);
+        return remoteAlbaranes;
+      } catch (err) {
+        console.error('Error al cargar albaranes de Supabase:', err);
+      }
+    }
+    return this.getAlbaranes();
+  }
+
+  static saveAlbaranesLocal(albaranes: Albaran[]): void {
     localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(albaranes));
   }
 
-  static createAlbaran(newAlbaran: Omit<Albaran, 'id' | 'certified' | 'createdAt'>): Albaran {
+  static async createAlbaran(
+    newAlbaran: Omit<Albaran, 'id' | 'certified' | 'createdAt'>
+  ): Promise<Albaran> {
     const albaranes = this.getAlbaranes();
 
-    // Ensure client exists or is updated
-    const client = this.upsertClientFromScan(newAlbaran.clientCode, newAlbaran.clientName);
+    // Ensure client exists
+    const client = await this.upsertClientFromScan(newAlbaran.clientCode, newAlbaran.clientName);
 
     const created: Albaran = {
       ...newAlbaran,
@@ -361,22 +215,47 @@ export class RCDService {
       certified: false,
       createdAt: new Date().toISOString(),
       notificationsSent: {
-        mobileSent: client.notifyMobile,
+        mobileSent: false,
         emailSent: client.notifyEmail,
         timestamp: new Date().toISOString(),
       },
     };
 
+    // Attempt WhatsApp notification via Ultramsg if client has mobile notification enabled
+    if (client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
+      const messageText = `🏭 *Planta RCD EcoMarraque*\n\nEstimado cliente *${client.name}*,\n\nSe ha registrado en planta un nuevo albarán de entrega:\n📜 *Nº Albarán:* ${created.numAlbaran}\n📦 *Residuo:* ${created.wasteTypeName} (${created.wasteTypeCode})\n⚖️ *Peso Neto:* ${created.quantityTons} toneladas\n🚚 *Matrícula:* ${created.licensePlate}\n📍 *Zona:* ${created.plantZone}\n📅 *Fecha/Hora:* ${created.date} ${created.time}\n\nGracias por su compromiso con la gestión sostenible de RCD.`;
+
+      const sendResult = await UltramsgService.sendWhatsApp(client.mobile, messageText);
+      if (sendResult.success) {
+        created.notificationsSent = {
+          mobileSent: true,
+          emailSent: client.notifyEmail,
+          timestamp: new Date().toISOString(),
+        };
+      }
+    }
+
     albaranes.unshift(created);
-    this.saveAlbaranes(albaranes);
+    this.saveAlbaranesLocal(albaranes);
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        await SupabaseService.insertAlbaran(created);
+      } catch (err) {
+        console.error('Error al guardar albarán en Supabase:', err);
+      }
+    }
+
     return created;
   }
 
+  // ===============================================
+  // CERTIFICATES MANAGEMENT
+  // ===============================================
   static getCertificates(): Certificate[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.CERTIFICATES);
       if (!data) {
-        localStorage.setItem(STORAGE_KEYS.CERTIFICATES, JSON.stringify(INITIAL_CERTIFICATES));
         return INITIAL_CERTIFICATES;
       }
       return JSON.parse(data);
@@ -385,7 +264,20 @@ export class RCDService {
     }
   }
 
-  static saveCertificates(certs: Certificate[]): void {
+  static async loadCertificatesFromRemote(): Promise<Certificate[]> {
+    if (SupabaseService.isConfigured()) {
+      try {
+        const remoteCerts = await SupabaseService.fetchCertificates();
+        this.saveCertificatesLocal(remoteCerts);
+        return remoteCerts;
+      } catch (err) {
+        console.error('Error al cargar certificados de Supabase:', err);
+      }
+    }
+    return this.getCertificates();
+  }
+
+  static saveCertificatesLocal(certs: Certificate[]): void {
     localStorage.setItem(STORAGE_KEYS.CERTIFICATES, JSON.stringify(certs));
   }
 
@@ -393,8 +285,9 @@ export class RCDService {
    * CRITICAL FEATURE: Issue a Waste Certificate for third party
    * - Locks all included albaranes (certified = true)
    * - Prevents any future certificate from using the same albaranes
+   * - Saves to Supabase and sends WhatsApp via Ultramsg if configured
    */
-  static issueCertificate(payload: {
+  static async issueCertificate(payload: {
     clientId: string;
     clientName: string;
     clientCif: string;
@@ -404,7 +297,7 @@ export class RCDService {
     constructionSiteAddress: string;
     selectedAlbaranIds: string[];
     issuerName: string;
-  }): Certificate {
+  }): Promise<Certificate> {
     const allAlbaranes = this.getAlbaranes();
 
     // Filter valid, uncertified albaranes
@@ -463,7 +356,7 @@ export class RCDService {
       status: 'Emitido',
     };
 
-    // LOCK the albaranes so they CANNOT be re-certified
+    // LOCK the albaranes in local state
     const updatedAlbaranes = allAlbaranes.map((alb) => {
       if (payload.selectedAlbaranIds.includes(alb.id)) {
         return {
@@ -476,18 +369,40 @@ export class RCDService {
       return alb;
     });
 
-    this.saveAlbaranes(updatedAlbaranes);
+    this.saveAlbaranesLocal(updatedAlbaranes);
 
     const certificates = this.getCertificates();
     certificates.unshift(newCertificate);
-    this.saveCertificates(certificates);
+    this.saveCertificatesLocal(certificates);
+
+    // Sync to Supabase
+    if (SupabaseService.isConfigured()) {
+      try {
+        await SupabaseService.insertCertificate(newCertificate);
+        await SupabaseService.updateAlbaranesLockStatus(
+          payload.selectedAlbaranIds,
+          certId,
+          certNumber
+        );
+      } catch (err) {
+        console.error('Error al sincronizar certificado con Supabase:', err);
+      }
+    }
+
+    // Send WhatsApp via Ultramsg if client has mobile number
+    const client = this.getClientById(payload.clientId);
+    if (client && client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
+      const msg = `📜 *Planta RCD EcoMarraque*\n\nEstimado cliente *${client.name}*,\n\nSe ha emitido un nuevo *Certificado de Valorización de RCD*:\n\n📑 *Nº Certificado:* ${newCertificate.certificateNumber}\n🏗️ *Obra / Promotor:* ${newCertificate.constructionSiteName}\n⚖️ *Total Certificado:* ${newCertificate.totalTons} toneladas\n🔐 *Código Verificación:* ${newCertificate.verificationCode}\n\nPuede consultar e descargar su certificado desde el Portal del Cliente.`;
+
+      await UltramsgService.sendWhatsApp(client.mobile, msg);
+    }
 
     return newCertificate;
   }
 
-  static resetToDefaultData(): void {
-    localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(INITIAL_CLIENTS));
-    localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(INITIAL_ALBARANES));
-    localStorage.setItem(STORAGE_KEYS.CERTIFICATES, JSON.stringify(INITIAL_CERTIFICATES));
+  static clearAllData(): void {
+    localStorage.removeItem(STORAGE_KEYS.CLIENTS);
+    localStorage.removeItem(STORAGE_KEYS.ALBARANES);
+    localStorage.removeItem(STORAGE_KEYS.CERTIFICATES);
   }
 }
