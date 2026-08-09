@@ -176,63 +176,79 @@ export class SupabaseService {
   // SUPABASE API METHODS
   // ==========================================
 
-  static async fetchClients(): Promise<Client[]> {
+  static async fetchClients(): Promise<Client[] | null> {
     const supabase = this.getClient();
-    if (!supabase) return [];
+    if (!supabase) return null;
 
-    const { data, error } = await supabase
-      .from('rcd_clients')
-      .select('*')
-      .order('rcd_created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('rcd_clients')
+        .select('*')
+        .order('rcd_created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching rcd_clients from Supabase:', error);
-      throw error;
+      if (error) {
+        console.warn('Notice fetching rcd_clients from Supabase:', error.message || error);
+        return null;
+      }
+
+      return (data || []).map(this.mapDBToClient);
+    } catch (err) {
+      console.warn('Notice connecting to rcd_clients on Supabase:', err);
+      return null;
     }
-
-    return (data || []).map(this.mapDBToClient);
   }
 
   static async upsertClient(client: Client): Promise<void> {
     const supabase = this.getClient();
     if (!supabase) return;
 
-    const row = this.mapClientToDB(client);
-    const { error } = await supabase.from('rcd_clients').upsert(row, { onConflict: 'rcd_id' });
+    try {
+      const row = this.mapClientToDB(client);
+      const { error } = await supabase.from('rcd_clients').upsert(row, { onConflict: 'rcd_id' });
 
-    if (error) {
-      console.error('Error upserting rcd_clients into Supabase:', error);
-      throw error;
+      if (error) {
+        console.warn('Notice upserting rcd_clients into Supabase:', error.message || error);
+      }
+    } catch (err) {
+      console.warn('Notice upserting rcd_clients into Supabase:', err);
     }
   }
 
-  static async fetchAlbaranes(): Promise<Albaran[]> {
+  static async fetchAlbaranes(): Promise<Albaran[] | null> {
     const supabase = this.getClient();
-    if (!supabase) return [];
+    if (!supabase) return null;
 
-    const { data, error } = await supabase
-      .from('rcd_albaranes')
-      .select('*')
-      .order('rcd_created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('rcd_albaranes')
+        .select('*')
+        .order('rcd_created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching rcd_albaranes from Supabase:', error);
-      throw error;
+      if (error) {
+        console.warn('Notice fetching rcd_albaranes from Supabase:', error.message || error);
+        return null;
+      }
+
+      return (data || []).map(this.mapDBToAlbaran);
+    } catch (err) {
+      console.warn('Notice connecting to rcd_albaranes on Supabase:', err);
+      return null;
     }
-
-    return (data || []).map(this.mapDBToAlbaran);
   }
 
   static async insertAlbaran(alb: Albaran): Promise<void> {
     const supabase = this.getClient();
     if (!supabase) return;
 
-    const row = this.mapAlbaranToDB(alb);
-    const { error } = await supabase.from('rcd_albaranes').insert(row);
+    try {
+      const row = this.mapAlbaranToDB(alb);
+      const { error } = await supabase.from('rcd_albaranes').insert(row);
 
-    if (error) {
-      console.error('Error inserting rcd_albaranes into Supabase:', error);
-      throw error;
+      if (error) {
+        console.warn('Notice inserting rcd_albaranes into Supabase:', error.message || error);
+      }
+    } catch (err) {
+      console.warn('Notice inserting rcd_albaranes into Supabase:', err);
     }
   }
 
@@ -244,48 +260,60 @@ export class SupabaseService {
     const supabase = this.getClient();
     if (!supabase) return;
 
-    const { error } = await supabase
-      .from('rcd_albaranes')
-      .update({
-        rcd_certified: true,
-        rcd_certificate_id: certificateId,
-        rcd_certificate_number: certificateNumber,
-      })
-      .in('rcd_id', albaranIds);
+    try {
+      const { error } = await supabase
+        .from('rcd_albaranes')
+        .update({
+          rcd_certified: true,
+          rcd_certificate_id: certificateId,
+          rcd_certificate_number: certificateNumber,
+        })
+        .in('rcd_id', albaranIds);
 
-    if (error) {
-      console.error('Error locking rcd_albaranes in Supabase:', error);
-      throw error;
+      if (error) {
+        console.warn('Notice locking rcd_albaranes in Supabase:', error.message || error);
+      }
+    } catch (err) {
+      console.warn('Notice locking rcd_albaranes in Supabase:', err);
     }
   }
 
-  static async fetchCertificates(): Promise<Certificate[]> {
+  static async fetchCertificates(): Promise<Certificate[] | null> {
     const supabase = this.getClient();
-    if (!supabase) return [];
+    if (!supabase) return null;
 
-    const { data, error } = await supabase
-      .from('rcd_certificates')
-      .select('*')
-      .order('rcd_created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('rcd_certificates')
+        .select('*')
+        .order('rcd_created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching rcd_certificates from Supabase:', error);
-      throw error;
+      if (error) {
+        console.warn('Notice fetching rcd_certificates from Supabase:', error.message || error);
+        return null;
+      }
+
+      return (data || []).map(this.mapDBToCertificate);
+    } catch (err) {
+      console.warn('Notice connecting to rcd_certificates on Supabase:', err);
+      return null;
     }
-
-    return (data || []).map(this.mapDBToCertificate);
   }
 
   static async insertCertificate(cert: Certificate): Promise<void> {
     const supabase = this.getClient();
     if (!supabase) return;
 
-    const row = this.mapCertificateToDB(cert);
-    const { error } = await supabase.from('rcd_certificates').insert(row);
+    try {
+      const row = this.mapCertificateToDB(cert);
+      const { error } = await supabase.from('rcd_certificates').insert(row);
 
-    if (error) {
-      console.error('Error inserting rcd_certificates into Supabase:', error);
-      throw error;
+      if (error) {
+        console.warn('Notice inserting rcd_certificates into Supabase:', error.message || error);
+      }
+    } catch (err) {
+      console.warn('Notice inserting rcd_certificates into Supabase:', err);
     }
   }
 }
+
