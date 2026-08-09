@@ -54,6 +54,9 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
   // Step 4: Final Submission state
   const [submittedAlbaran, setSubmittedAlbaran] = useState<Albaran | null>(null);
 
+  // Verification modal state after scanning ticket
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+
   // Handle image upload / camera capture for SAP ticket OCR
   const handleAlbaranImageSelected = async (file: File) => {
     const reader = new FileReader();
@@ -124,12 +127,8 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
           }
         }
 
-        // Auto advance to Step 2 (Foto Camión) if key fields were read
-        if (extractedData.numAlbaran || extractedData.clientName) {
-          setTimeout(() => {
-            setCurrentStep(2);
-          }, 900);
-        }
+        // Show verification modal window for operator review
+        setShowVerificationModal(true);
       } else {
         setScanNotes('No se pudo leer el albarán por OCR. Complete o revise los datos manualmente.');
       }
@@ -412,6 +411,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                     setTimeStr('11:45');
                     setScanNotes('Ticket SAP de prueba cargado correctamente.');
                     setIsScanning(false);
+                    setShowVerificationModal(true);
                   }, 800);
                 }}
                 className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 font-semibold py-3 px-3 rounded-xl border border-purple-700/60 flex items-center justify-center space-x-2 transition text-xs sm:text-sm"
@@ -872,4 +872,3 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     </div>
   );
 };
-
