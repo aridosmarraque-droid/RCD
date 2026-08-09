@@ -50,7 +50,7 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
   const selectedAlbaranes = availableAlbaranes.filter((a) => selectedIds.includes(a.id));
   const totalSelectedTons = selectedAlbaranes.reduce((acc, curr) => acc + curr.quantityTons, 0);
 
-  const handleIssue = () => {
+  const handleIssue = async () => {
     setErrorMsg('');
 
     if (selectedIds.length === 0) {
@@ -64,7 +64,7 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
     }
 
     try {
-      const createdCert = RCDService.issueCertificate({
+      const createdCert = await RCDService.issueCertificate({
         clientId: client.id,
         clientName: client.name,
         clientCif: client.cif,
