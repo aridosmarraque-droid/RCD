@@ -81,7 +81,7 @@ export class UltramsgService {
         return { success: false, error: data.error || data.message || JSON.stringify(data) };
       }
     } catch (err: any) {
-      console.error('Error enviando WhatsApp vía Ultramsg:', err);
+      console.warn('Notice sending WhatsApp via Ultramsg:', err);
       return { success: false, error: err?.message || 'Error de red al conectar con Ultramsg' };
     }
   }
