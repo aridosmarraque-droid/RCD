@@ -215,13 +215,13 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
   };
 
   // Submit complete entry
-  const handleSubmitEntry = () => {
+  const handleSubmitEntry = async () => {
     if (!numAlbaran || !clientName) {
       alert('Por favor complete los datos del albarán de SAP.');
       return;
     }
 
-    const created = RCDService.createAlbaran({
+    const created = await RCDService.createAlbaran({
       numAlbaran: numAlbaran.trim().toUpperCase(),
       clientId: '',
       clientName: clientName.trim(),
