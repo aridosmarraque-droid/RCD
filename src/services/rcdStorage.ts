@@ -85,10 +85,12 @@ export class RCDService {
     if (SupabaseService.isConfigured()) {
       try {
         const remoteClients = await SupabaseService.fetchClients();
-        this.saveClientsLocal(remoteClients);
-        return remoteClients;
+        if (remoteClients) {
+          this.saveClientsLocal(remoteClients);
+          return remoteClients;
+        }
       } catch (err) {
-        console.error('Error al cargar clientes de Supabase:', err);
+        console.warn('Notice loading clients from Supabase:', err);
       }
     }
     return this.getClients();
@@ -105,7 +107,7 @@ export class RCDService {
         try {
           await SupabaseService.upsertClient(client);
         } catch (e) {
-          console.error('Failed to sync client to Supabase:', e);
+          console.warn('Notice syncing client to Supabase:', e);
         }
       }
     }
@@ -187,10 +189,12 @@ export class RCDService {
     if (SupabaseService.isConfigured()) {
       try {
         const remoteAlbaranes = await SupabaseService.fetchAlbaranes();
-        this.saveAlbaranesLocal(remoteAlbaranes);
-        return remoteAlbaranes;
+        if (remoteAlbaranes) {
+          this.saveAlbaranesLocal(remoteAlbaranes);
+          return remoteAlbaranes;
+        }
       } catch (err) {
-        console.error('Error al cargar albaranes de Supabase:', err);
+        console.warn('Notice loading albaranes from Supabase:', err);
       }
     }
     return this.getAlbaranes();
@@ -242,7 +246,7 @@ export class RCDService {
       try {
         await SupabaseService.insertAlbaran(created);
       } catch (err) {
-        console.error('Error al guardar albarán en Supabase:', err);
+        console.warn('Notice saving albaran to Supabase:', err);
       }
     }
 
@@ -268,10 +272,12 @@ export class RCDService {
     if (SupabaseService.isConfigured()) {
       try {
         const remoteCerts = await SupabaseService.fetchCertificates();
-        this.saveCertificatesLocal(remoteCerts);
-        return remoteCerts;
+        if (remoteCerts) {
+          this.saveCertificatesLocal(remoteCerts);
+          return remoteCerts;
+        }
       } catch (err) {
-        console.error('Error al cargar certificados de Supabase:', err);
+        console.warn('Notice loading certificates from Supabase:', err);
       }
     }
     return this.getCertificates();
@@ -385,7 +391,7 @@ export class RCDService {
           certNumber
         );
       } catch (err) {
-        console.error('Error al sincronizar certificado con Supabase:', err);
+        console.warn('Notice syncing certificate with Supabase:', err);
       }
     }
 
