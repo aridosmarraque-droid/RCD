@@ -121,7 +121,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
         setScanNotes('No se pudo leer el albarán por OCR. Complete o revise los datos manualmente.');
       }
     } catch (err) {
-      console.error('Error running OCR:', err);
+      console.warn('Notice running OCR:', err);
       setScanNotes('Error de lectura OCR.');
     } finally {
       setIsScanning(false);
