@@ -3,7 +3,9 @@ import { Header, AppMode } from '@/components/Header';
 import { OperatorMobileView } from '@/components/OperatorMobileView';
 import { ClientPortalView } from '@/components/ClientPortalView';
 import { AdminPlantView } from '@/components/AdminPlantView';
+import { SettingsModal } from '@/components/SettingsModal';
 import { RCDService } from '@/services/rcdStorage';
+import { SupabaseService } from '@/services/supabaseClient';
 import { Client, Albaran, Certificate } from '@/types/rcd';
 
 export default function App() {
@@ -12,11 +14,15 @@ export default function App() {
   const [albaranes, setAlbaranes] = useState<Albaran[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isSupabaseConfigured, setIsSupabaseConfigured] = useState<boolean>(false);
 
-  const loadData = () => {
-    const loadedClients = RCDService.getClients();
-    const loadedAlbaranes = RCDService.getAlbaranes();
-    const loadedCertificates = RCDService.getCertificates();
+  const loadData = async () => {
+    setIsSupabaseConfigured(SupabaseService.isConfigured());
+
+    const loadedClients = await RCDService.loadClientsFromRemote();
+    const loadedAlbaranes = await RCDService.loadAlbaranesFromRemote();
+    const loadedCertificates = await RCDService.loadCertificatesFromRemote();
 
     setClients(loadedClients);
     setAlbaranes(loadedAlbaranes);
@@ -31,13 +37,6 @@ export default function App() {
     loadData();
   }, []);
 
-  const handleResetData = () => {
-    if (confirm('¿Restablecer datos iniciales de demo de la Planta RCD?')) {
-      RCDService.resetToDefaultData();
-      loadData();
-    }
-  };
-
   const activeClient = clients.find((c) => c.id === selectedClientId) || clients[0];
 
   return (
@@ -50,7 +49,8 @@ export default function App() {
         selectedClientId={selectedClientId}
         setSelectedClientId={setSelectedClientId}
         clientsList={clients.map((c) => ({ id: c.id, name: c.name, code: c.code }))}
-        onResetData={handleResetData}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        isSupabaseConfigured={isSupabaseConfigured}
       />
 
       {/* Main Content Area */}
@@ -63,13 +63,29 @@ export default function App() {
           />
         )}
 
-        {mode === 'client' && activeClient && (
-          <ClientPortalView
-            client={activeClient}
-            albaranes={albaranes}
-            certificates={certificates}
-            onRefreshData={loadData}
-          />
+        {mode === 'client' && (
+          activeClient ? (
+            <ClientPortalView
+              client={activeClient}
+              albaranes={albaranes}
+              certificates={certificates}
+              onRefreshData={loadData}
+            />
+          ) : (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center max-w-lg mx-auto my-12 space-y-4">
+              <div className="text-4xl">🏗️</div>
+              <h3 className="text-lg font-bold text-white">Sin Clientes Registrados</h3>
+              <p className="text-xs text-slate-400">
+                Aún no hay clientes en la base de datos de Supabase o local. Registre una entrada en la App de Operario o introduzca las credenciales de Supabase.
+              </p>
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs transition"
+              >
+                Configurar Supabase BBDD
+              </button>
+            </div>
+          )
         )}
 
         {mode === 'admin' && (
@@ -82,11 +98,18 @@ export default function App() {
         )}
       </main>
 
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onDataChanged={loadData}
+      />
+
       {/* Footer */}
       <footer className="bg-slate-900 border-t border-slate-800 py-4 px-4 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <div>
-            <strong>Planta de Residuos RCD EcoMarraque S.L.</strong> — Integrado con SAP Business One & Gemini AI Vision
+            <strong>Planta de Residuos RCD EcoMarraque S.L.</strong> — Conexión BBDD Supabase & Ultramsg WhatsApp
           </div>
           <div className="text-[11px] text-slate-600">
             Conforme a Ley 7/2022 de Residuos y RD 105/2008 RCD
