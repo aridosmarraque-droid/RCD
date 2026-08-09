@@ -9,18 +9,27 @@ const SUPABASE_STORAGE_KEYS = {
 export class SupabaseService {
   private static clientInstance: SupabaseClient | null = null;
 
+  static sanitizeUrl(rawUrl: string): string {
+    if (!rawUrl) return '';
+    let url = rawUrl.trim();
+    url = url.replace(/\/+$/, '');
+    url = url.replace(/\/rest\/v1$/i, '');
+    return url.replace(/\/+$/, '');
+  }
+
   static getCredentials(): { url: string; anonKey: string } {
     const savedUrl = localStorage.getItem(SUPABASE_STORAGE_KEYS.URL);
     const savedKey = localStorage.getItem(SUPABASE_STORAGE_KEYS.ANON_KEY);
 
-    const url = savedUrl || import.meta.env.VITE_SUPABASE_URL || '';
+    const url = this.sanitizeUrl(savedUrl || import.meta.env.VITE_SUPABASE_URL || '');
     const anonKey = savedKey || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
     return { url, anonKey };
   }
 
   static saveCredentials(url: string, anonKey: string): void {
-    localStorage.setItem(SUPABASE_STORAGE_KEYS.URL, url.trim());
+    const sanitizedUrl = this.sanitizeUrl(url);
+    localStorage.setItem(SUPABASE_STORAGE_KEYS.URL, sanitizedUrl);
     localStorage.setItem(SUPABASE_STORAGE_KEYS.ANON_KEY, anonKey.trim());
     this.clientInstance = null; // reset client to re-initialize
   }
@@ -252,6 +261,21 @@ export class SupabaseService {
     }
   }
 
+  static async deleteAlbaran(id: string): Promise<void> {
+    const supabase = this.getClient();
+    if (!supabase) return;
+
+    try {
+      const { error } = await supabase.from('rcd_albaranes').delete().eq('rcd_id', id);
+
+      if (error) {
+        console.warn('Notice deleting rcd_albaranes from Supabase:', error.message || error);
+      }
+    } catch (err) {
+      console.warn('Notice deleting rcd_albaranes from Supabase:', err);
+    }
+  }
+
   static async updateAlbaranesLockStatus(
     albaranIds: string[],
     certificateId: string,
@@ -316,4 +340,3 @@ export class SupabaseService {
     }
   }
 }
-
