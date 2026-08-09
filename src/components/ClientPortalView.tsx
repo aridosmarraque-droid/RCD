@@ -14,10 +14,10 @@ import {
   PlusCircle,
   AlertCircle
 } from 'lucide-react';
-import { Albaran, Certificate, Client } from '../types/rcd';
-import { PhotoLightboxModal } from './PhotoLightboxModal';
-import { IssueCertificateModal } from './IssueCertificateModal';
-import { openPrintableCertificate } from '../utils/certificatePdf';
+import { Albaran, Certificate, Client } from '@/types/rcd';
+import { PhotoLightboxModal } from '@/components/PhotoLightboxModal';
+import { IssueCertificateModal } from '@/components/IssueCertificateModal';
+import { openPrintableCertificate } from '@/utils/certificatePdf';
 
 interface ClientPortalViewProps {
   client: Client;
