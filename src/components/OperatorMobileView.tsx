@@ -65,73 +65,64 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     reader.readAsDataURL(file);
   };
 
-  // Run Gemini API Vision OCR or smart extraction on the SAP Albarán photo
+  // Run Gemini API Vision OCR on the real SAP Albarán photo
   const runGeminiOCR = async (imageBase64: string, mimeType: string) => {
     setIsScanning(true);
     let extractedData: Partial<OCRScanResult> | null = null;
 
     try {
-      // 1. Try direct Gemini API Vision with client API key
       extractedData = await scanAlbaranWithGemini(imageBase64, mimeType);
 
-      // 2. Fallback to /api/scan-albaran endpoint if available
-      if (!extractedData) {
-        try {
-          const response = await fetch('/api/scan-albaran', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64, mimeType }),
-          });
-
-          if (response.ok) {
-            extractedData = await response.json();
-          }
-        } catch (apiErr) {
-          // ignore API route error for SPA mode
+      if (extractedData) {
+        if (extractedData.numAlbaran && extractedData.numAlbaran.trim()) {
+          setNumAlbaran(extractedData.numAlbaran.trim());
         }
-      }
+        if (extractedData.clientCode !== undefined) {
+          setClientCode(extractedData.clientCode.trim());
+        }
+        if (extractedData.clientName && extractedData.clientName.trim()) {
+          setClientName(extractedData.clientName.trim());
+        }
+        if (extractedData.quantityTons !== undefined && extractedData.quantityTons !== null) {
+          const qty = Number(extractedData.quantityTons);
+          if (!isNaN(qty)) setQuantityTons(qty);
+        }
+        if (extractedData.licensePlate && extractedData.licensePlate.trim()) {
+          setLicensePlate(extractedData.licensePlate.trim().toUpperCase());
+        }
+        if (extractedData.date) setDateStr(extractedData.date);
+        if (extractedData.time) setTimeStr(extractedData.time);
 
-      // 3. Guarantee that fields are populated automatically on image upload!
-      const randomNum = Math.floor(10000 + Math.random() * 90000);
-      const generatedNum = `ALB-2026-${randomNum}`;
+        if (extractedData.notes) {
+          setScanNotes(extractedData.notes);
+        } else {
+          setScanNotes('Lectura OCR completada. Datos reales del albarán extraídos.');
+        }
 
-      const numToSet = extractedData?.numAlbaran?.trim() || generatedNum;
-      const clientCodeToSet = extractedData?.clientCode?.trim() || 'C-00104';
-      const clientNameToSet = extractedData?.clientName?.trim() || 'CONSTRUCCIONES MARRAQUE S.L.';
-      const quantityToSet = Number(extractedData?.quantityTons) || 14.85;
-      const plateToSet = extractedData?.licensePlate?.trim().toUpperCase() || '8492-KZX';
-      const dateToSet = extractedData?.date || new Date().toISOString().split('T')[0];
-      const timeToSet =
-        extractedData?.time ||
-        new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-      const notesToSet =
-        extractedData?.notes || 'Albarán procesado e identificado correctamente por OCR.';
+        if (extractedData.wasteTypeCode) {
+          const wasteCode = extractedData.wasteTypeCode.trim();
+          const matched = OFFICIAL_WASTE_TYPES.find((w: WasteType) => w.code === wasteCode);
+          if (matched) {
+            setWasteTypeCode(matched.code);
+            setWasteTypeName(matched.name);
+          } else if (extractedData.wasteTypeName) {
+            setWasteTypeCode(wasteCode);
+            setWasteTypeName(extractedData.wasteTypeName);
+          }
+        }
 
-      setNumAlbaran(numToSet);
-      setClientCode(clientCodeToSet);
-      setClientName(clientNameToSet);
-      setQuantityTons(quantityToSet);
-      setLicensePlate(plateToSet);
-      setDateStr(dateToSet);
-      setTimeStr(timeToSet);
-      setScanNotes(notesToSet);
-
-      if (extractedData?.wasteTypeCode) {
-        const wasteCode = extractedData.wasteTypeCode;
-        const matched = OFFICIAL_WASTE_TYPES.find((w: WasteType) => w.code === wasteCode);
-        if (matched) {
-          setWasteTypeCode(matched.code);
-          setWasteTypeName(matched.name);
-        } else if (extractedData.wasteTypeName) {
-          setWasteTypeCode(wasteCode);
-          setWasteTypeName(extractedData.wasteTypeName);
+        // Auto advance to Step 2 (Foto Camión) if key fields were read
+        if (extractedData.numAlbaran || extractedData.clientName) {
+          setTimeout(() => {
+            setCurrentStep(2);
+          }, 900);
         }
       } else {
-        setWasteTypeCode('17 01 01');
-        setWasteTypeName('Hormigón y Piedra (Escombro Limpio)');
+        setScanNotes('No se pudo leer el albarán por OCR. Complete o revise los datos manualmente.');
       }
     } catch (err) {
       console.error('Error running OCR:', err);
+      setScanNotes('Error de lectura OCR.');
     } finally {
       setIsScanning(false);
     }
@@ -569,27 +560,10 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
             {/* Next Button */}
             <button
               onClick={() => {
-                let currentNum = numAlbaran.trim();
-                let currentClient = clientName.trim();
-
-                if (!currentNum) {
-                  currentNum = `ALB-2026-${Math.floor(10000 + Math.random() * 90000)}`;
-                  setNumAlbaran(currentNum);
+                if (!numAlbaran.trim() || !clientName.trim()) {
+                  alert('Por favor complete el Número de Albarán y la Razón Social del Cliente.');
+                  return;
                 }
-                if (!currentClient) {
-                  currentClient = 'CONSTRUCCIONES MARRAQUE S.L.';
-                  setClientName(currentClient);
-                }
-                if (!clientCode) {
-                  setClientCode('C-00104');
-                }
-                if (!quantityTons || quantityTons <= 0) {
-                  setQuantityTons(14.85);
-                }
-                if (!licensePlate) {
-                  setLicensePlate('8492-KZX');
-                }
-
                 setCurrentStep(2);
               }}
               className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center space-x-2 transition text-sm sm:text-base mt-2"
