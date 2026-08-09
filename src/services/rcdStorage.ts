@@ -1,4 +1,4 @@
-import { Albaran, Certificate, Client, WasteType } from '@/types/rcd';
+import { Albaran, Certificate, Client, WasteType } from '../types/rcd';
 import { SupabaseService } from './supabaseClient';
 import { UltramsgService } from './ultramsgService';
 

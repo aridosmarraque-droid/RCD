@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Albaran, Certificate, Client } from '@/types/rcd';
+import { Albaran, Certificate, Client } from '../types/rcd';
 
 const SUPABASE_STORAGE_KEYS = {
   URL: 'rcd_supabase_url',
