@@ -253,6 +253,19 @@ export class RCDService {
     return created;
   }
 
+  static async deleteAlbaran(id: string): Promise<void> {
+    const albaranes = this.getAlbaranes().filter((a) => a.id !== id);
+    this.saveAlbaranesLocal(albaranes);
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        await SupabaseService.deleteAlbaran(id);
+      } catch (err) {
+        console.warn('Notice deleting albaran from Supabase:', err);
+      }
+    }
+  }
+
   // ===============================================
   // CERTIFICATES MANAGEMENT
   // ===============================================
@@ -412,3 +425,4 @@ export class RCDService {
     localStorage.removeItem(STORAGE_KEYS.CERTIFICATES);
   }
 }
+
