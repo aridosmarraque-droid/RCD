@@ -22,7 +22,7 @@ export default function App() {
     setAlbaranes(loadedAlbaranes);
     setCertificates(loadedCertificates);
 
-    if (loadedClients.length > 0 && (!selectedClientId || !loadedClients.find((c) => c.id === selectedClientId))) {
+    if (loadedClients.length > 0 && (!selectedClientId || !loadedClients.find((c: Client) => c.id === selectedClientId))) {
       setSelectedClientId(loadedClients[0].id);
     }
   };
