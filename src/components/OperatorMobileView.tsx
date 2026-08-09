@@ -292,10 +292,10 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
             </div>
 
             {/* Photo Capture or Upload Buttons */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-              <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold py-3 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-lg shadow-emerald-600/20 transition">
-                <Camera className="w-5 h-5 text-slate-950" />
-                <span>Hacer Foto al Albarán</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+              <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold py-3 px-3 rounded-xl flex items-center justify-center space-x-2 shadow-lg shadow-emerald-600/20 transition text-xs sm:text-sm">
+                <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-slate-950 flex-shrink-0" />
+                <span>Hacer Foto</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -307,9 +307,9 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                 />
               </label>
 
-              <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 text-white font-semibold py-3 px-4 rounded-xl border border-slate-700 flex items-center justify-center space-x-2 transition">
-                <Upload className="w-5 h-5 text-slate-300" />
-                <span>Subir Archivo / Galería</span>
+              <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 text-white font-semibold py-3 px-3 rounded-xl border border-slate-700 flex items-center justify-center space-x-2 transition text-xs sm:text-sm">
+                <Upload className="w-4 h-4 sm:w-5 sm:h-5 text-slate-300 flex-shrink-0" />
+                <span>Subir Galería</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -319,6 +319,71 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                   }}
                 />
               </label>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsScanning(true);
+                  const canvas = document.createElement('canvas');
+                  canvas.width = 600;
+                  canvas.height = 800;
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.fillRect(0, 0, 600, 800);
+                    ctx.fillStyle = '#0f172a';
+                    ctx.font = 'bold 22px monospace';
+                    ctx.fillText('PLANTA RECICLAJE RCD ECOMARRAQUE', 30, 50);
+                    ctx.font = '14px monospace';
+                    ctx.fillStyle = '#475569';
+                    ctx.fillText('Báscula #1 - Ticket de Entrada SAP Business One', 30, 75);
+                    ctx.fillRect(30, 90, 540, 2);
+
+                    const randomId = Math.floor(1000 + Math.random() * 9000);
+                    ctx.fillStyle = '#0f172a';
+                    ctx.font = '16px monospace';
+                    ctx.fillText(`ALBARÁN SAP Nº: ALB-2026-0${randomId}`, 30, 130);
+                    ctx.fillText(`CLIENTE: CONSTRUCCIONES Y REFORMAS MARRAQUE S.L.`, 30, 160);
+                    ctx.fillText(`CÓDIGO CLIENTE: C-00104 | CIF: B-41920391`, 30, 190);
+                    ctx.fillText(`FECHA: ${new Date().toISOString().split('T')[0]}  HORA: 11:45`, 30, 220);
+                    ctx.fillText(`MATRÍCULA VEHÍCULO: 8492-KZX`, 30, 250);
+                    ctx.fillText(`CONDUCTOR: Manuel Gómez Trujillo`, 30, 280);
+                    ctx.fillRect(30, 310, 540, 1);
+                    ctx.font = 'bold 16px monospace';
+                    ctx.fillText('RESIDUO (CÓDIGO LER): 17 01 01', 30, 350);
+                    ctx.font = '15px monospace';
+                    ctx.fillText('DENOMINACIÓN: Hormigón y Piedra (Escombro Limpio)', 30, 380);
+                    ctx.fillRect(30, 410, 540, 1);
+                    ctx.fillText('PESO BRUTO (Entrada): 28.45 t', 30, 450);
+                    ctx.fillText('TARA (Salida):        13.60 t', 30, 480);
+                    ctx.font = 'bold 20px monospace';
+                    ctx.fillStyle = '#047857';
+                    ctx.fillText('NETO REGISTRADO:      14.85 t', 30, 520);
+                  }
+
+                  const sampleBase64 = canvas.toDataURL('image/jpeg');
+                  setAlbaranPhoto(sampleBase64);
+
+                  setTimeout(() => {
+                    const randomNum = Math.floor(1000 + Math.random() * 9000);
+                    setNumAlbaran(`ALB-2026-0${randomNum}`);
+                    setClientCode('C-00104');
+                    setClientName('CONSTRUCCIONES MARRAQUE S.L.');
+                    setWasteTypeCode('17 01 01');
+                    setWasteTypeName('Hormigón y Piedra (Escombro Limpio)');
+                    setQuantityTons(14.85);
+                    setLicensePlate('8492-KZX');
+                    setDateStr(new Date().toISOString().split('T')[0]);
+                    setTimeStr('11:45');
+                    setScanNotes('Ticket SAP de prueba cargado correctamente.');
+                    setIsScanning(false);
+                  }, 800);
+                }}
+                className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 font-semibold py-3 px-3 rounded-xl border border-purple-700/60 flex items-center justify-center space-x-2 transition text-xs sm:text-sm"
+              >
+                <Sparkles className="w-4 h-4 text-purple-300 flex-shrink-0" />
+                <span>Ticket Ejemplo SAP</span>
+              </button>
             </div>
 
             {/* OCR Processing Loader */}
