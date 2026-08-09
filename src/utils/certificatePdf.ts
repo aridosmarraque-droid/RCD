@@ -1,4 +1,4 @@
-import { Certificate } from '../types/rcd';
+import { Certificate } from '@/types/rcd';
 
 /**
  * Generates an official printable Certificate document HTML / Print View
