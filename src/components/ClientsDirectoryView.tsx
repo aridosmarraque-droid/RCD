@@ -27,8 +27,8 @@ export const ClientsDirectoryView: React.FC<ClientsDirectoryViewProps> = ({ clie
     setEditNotifyMobile(client.notifyMobile);
   };
 
-  const handleSave = (client: Client) => {
-    RCDService.updateClientNotificationSettings(
+  const handleSave = async (client: Client) => {
+    await RCDService.updateClientNotificationSettings(
       client.id,
       editNotifyEmail,
       editNotifyMobile,
