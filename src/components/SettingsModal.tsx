@@ -1,0 +1,410 @@
+import React, { useState, useEffect } from 'react';
+import { X, Database, MessageSquare, Check, Copy, AlertTriangle, Save, Send, Sparkles, Server } from 'lucide-react';
+import { SupabaseService } from '@/services/supabaseClient';
+import { UltramsgService } from '@/services/ultramsgService';
+
+interface SettingsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onDataChanged: () => void;
+}
+
+export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onDataChanged }) => {
+  const [activeTab, setActiveTab] = useState<'supabase' | 'ultramsg'>('supabase');
+
+  // Supabase state
+  const [supabaseUrl, setSupabaseUrl] = useState('');
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState('');
+  const [supabaseSaved, setSupabaseSaved] = useState(false);
+  const [sqlCopied, setSqlCopied] = useState(false);
+
+  // Ultramsg state
+  const [instanceId, setInstanceId] = useState('');
+  const [token, setToken] = useState('');
+  const [ultramsgSaved, setUltramsgSaved] = useState(false);
+  const [testPhone, setTestPhone] = useState('');
+  const [testStatus, setTestStatus] = useState<{ loading: boolean; message?: string; success?: boolean }>({ loading: false });
+
+  useEffect(() => {
+    if (isOpen) {
+      const supCreds = SupabaseService.getCredentials();
+      setSupabaseUrl(supCreds.url);
+      setSupabaseAnonKey(supCreds.anonKey);
+
+      const ultraConfig = UltramsgService.getConfig();
+      setInstanceId(ultraConfig.instanceId);
+      setToken(ultraConfig.token);
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleSaveSupabase = (e: React.FormEvent) => {
+    e.preventDefault();
+    SupabaseService.saveCredentials(supabaseUrl, supabaseAnonKey);
+    setSupabaseSaved(true);
+    setTimeout(() => setSupabaseSaved(false), 3000);
+    onDataChanged();
+  };
+
+  const handleSaveUltramsg = (e: React.FormEvent) => {
+    e.preventDefault();
+    UltramsgService.saveConfig(instanceId, token);
+    setUltramsgSaved(true);
+    setTimeout(() => setUltramsgSaved(false), 3000);
+  };
+
+  const handleSendTestWhatsApp = async () => {
+    if (!testPhone) return;
+    setTestStatus({ loading: true });
+    const res = await UltramsgService.sendWhatsApp(
+      testPhone,
+      '🧪 *Planta RCD EcoMarraque*\n\nPrueba de integración con Ultramsg completada con éxito. ¡Los avisos de descarga RCD y certificados están listos!'
+    );
+    if (res.success) {
+      setTestStatus({ loading: false, success: true, message: '¡WhatsApp de prueba enviado correctamente!' });
+    } else {
+      setTestStatus({ loading: false, success: false, message: `Error: ${res.error}` });
+    }
+  };
+
+  const sqlDDLCode = `-- SQL para crear las tablas RCD en Supabase (Todos los campos con rcd_)
+CREATE TABLE IF NOT EXISTS public.rcd_clients (
+    rcd_id TEXT PRIMARY KEY,
+    rcd_code TEXT NOT NULL UNIQUE,
+    rcd_name TEXT NOT NULL,
+    rcd_cif TEXT NOT NULL,
+    rcd_email TEXT,
+    rcd_mobile TEXT,
+    rcd_notify_email BOOLEAN DEFAULT TRUE,
+    rcd_notify_mobile BOOLEAN DEFAULT TRUE,
+    rcd_address TEXT,
+    rcd_contact_person TEXT,
+    rcd_created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.rcd_albaranes (
+    rcd_id TEXT PRIMARY KEY,
+    rcd_num_albaran TEXT NOT NULL UNIQUE,
+    rcd_client_id TEXT REFERENCES public.rcd_clients(rcd_id) ON DELETE SET NULL,
+    rcd_client_name TEXT NOT NULL,
+    rcd_client_code TEXT NOT NULL,
+    rcd_date TEXT NOT NULL,
+    rcd_time TEXT NOT NULL,
+    rcd_waste_type_code TEXT NOT NULL,
+    rcd_waste_type_name TEXT NOT NULL,
+    rcd_quantity_tons NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    rcd_license_plate TEXT NOT NULL,
+    rcd_driver_name TEXT,
+    rcd_albaran_photo_url TEXT,
+    rcd_truck_photo_url TEXT,
+    rcd_unload_photo_url TEXT,
+    rcd_plant_zone TEXT,
+    rcd_gps_coords TEXT,
+    rcd_certified BOOLEAN DEFAULT FALSE,
+    rcd_certificate_id TEXT,
+    rcd_certificate_number TEXT,
+    rcd_notifications_sent JSONB DEFAULT '{"mobileSent": false, "emailSent": false}'::jsonb,
+    rcd_created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.rcd_certificates (
+    rcd_id TEXT PRIMARY KEY,
+    rcd_certificate_number TEXT NOT NULL UNIQUE,
+    rcd_issue_date TEXT NOT NULL,
+    rcd_client_id TEXT REFERENCES public.rcd_clients(rcd_id) ON DELETE SET NULL,
+    rcd_client_name TEXT NOT NULL,
+    rcd_client_cif TEXT NOT NULL,
+    rcd_third_party_name TEXT,
+    rcd_third_party_cif TEXT,
+    rcd_construction_site_name TEXT,
+    rcd_construction_site_address TEXT,
+    rcd_albaran_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    rcd_waste_breakdown JSONB NOT NULL DEFAULT '[]'::jsonb,
+    rcd_total_tons NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    rcd_issuer_name TEXT,
+    rcd_verification_code TEXT NOT NULL,
+    rcd_status TEXT DEFAULT 'Emitido',
+    rcd_created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.rcd_clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rcd_albaranes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rcd_certificates ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Acceso rcd_clients" ON public.rcd_clients FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Acceso rcd_albaranes" ON public.rcd_albaranes FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Acceso rcd_certificates" ON public.rcd_certificates FOR ALL USING (true) WITH CHECK (true);`;
+
+  const copySqlToClipboard = () => {
+    navigator.clipboard.writeText(sqlDDLCode);
+    setSqlCopied(true);
+    setTimeout(() => setSqlCopied(false), 3000);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden my-auto">
+        
+        {/* Header */}
+        <div className="bg-slate-950 px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="bg-emerald-500/20 text-emerald-400 p-2 rounded-lg border border-emerald-500/30">
+              <Server className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white">Configuración de Base de Datos y WhatsApp</h2>
+              <p className="text-xs text-slate-400">Conexión con Supabase y Ultramsg API</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-slate-800 bg-slate-950/50 px-6 pt-2">
+          <button
+            onClick={() => setActiveTab('supabase')}
+            className={`flex items-center space-x-2 px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition ${
+              activeTab === 'supabase'
+                ? 'border-emerald-500 text-emerald-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            <span>1. Supabase BBDD (Campos RCD_)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ultramsg')}
+            className={`flex items-center space-x-2 px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition ${
+              activeTab === 'ultramsg'
+                ? 'border-emerald-500 text-emerald-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>2. WhatsApp Ultramsg</span>
+          </button>
+        </div>
+
+        <div className="p-6 max-h-[75vh] overflow-y-auto space-y-6">
+
+          {/* TAB 1: SUPABASE */}
+          {activeTab === 'supabase' && (
+            <div className="space-y-6">
+              
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-xs text-emerald-300 space-y-2">
+                <div className="flex items-center space-x-2 font-bold text-sm text-emerald-400">
+                  <Sparkles className="w-4 h-4" />
+                  <span>Compatibilidad garantizada con su BBDD de Mantenimientos</span>
+                </div>
+                <p>
+                  Todos los campos de la aplicación RCD están prefijados con <code className="bg-slate-950 px-1.5 py-0.5 rounded text-emerald-400 font-mono">rcd_</code> y las tablas son <code className="bg-slate-950 px-1.5 py-0.5 rounded text-emerald-400 font-mono">rcd_clients</code>, <code className="bg-slate-950 px-1.5 py-0.5 rounded text-emerald-400 font-mono">rcd_albaranes</code> y <code className="bg-slate-950 px-1.5 py-0.5 rounded text-emerald-400 font-mono">rcd_certificates</code> para evitar cualquier interferencia con las tablas existentes de mantenimientos.
+                </p>
+              </div>
+
+              {/* Supabase Form */}
+              <form onSubmit={handleSaveSupabase} className="bg-slate-950 p-4 border border-slate-800 rounded-xl space-y-4">
+                <h3 className="text-sm font-bold text-white flex items-center justify-between">
+                  <span>Credenciales de Supabase Project</span>
+                  {SupabaseService.isConfigured() ? (
+                    <span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                      ● Conectado a Supabase
+                    </span>
+                  ) : (
+                    <span className="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                      ⚠️ Sin Configurar
+                    </span>
+                  )}
+                </h3>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    URL del proyecto Supabase (Project URL)
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://xyzcompany.supabase.co"
+                    value={supabaseUrl}
+                    onChange={(e) => setSupabaseUrl(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Clave pública / Anon Key (API Key)
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="eyJhbGciOiJIUzI1NiIsInR..."
+                    value={supabaseAnonKey}
+                    onChange={(e) => setSupabaseAnonKey(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="submit"
+                    className="flex items-center space-x-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs transition"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Guardar y Conectar Supabase</span>
+                  </button>
+
+                  {supabaseSaved && (
+                    <span className="text-xs text-emerald-400 font-bold flex items-center space-x-1">
+                      <Check className="w-4 h-4" />
+                      <span>¡Credenciales guardadas!</span>
+                    </span>
+                  )}
+                </div>
+              </form>
+
+              {/* SQL DDL Box */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">Código SQL para crear la BBDD en Supabase</h4>
+                    <p className="text-[11px] text-slate-400">Copie este código y ejecútelo en el <strong>SQL Editor</strong> de su panel de Supabase.</p>
+                  </div>
+                  <button
+                    onClick={copySqlToClipboard}
+                    className="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-emerald-400 border border-slate-700 px-3 py-1.5 rounded-lg transition"
+                  >
+                    {sqlCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    <span>{sqlCopied ? '¡Copiado!' : 'Copiar SQL'}</span>
+                  </button>
+                </div>
+
+                <pre className="bg-slate-900 border border-slate-800 rounded-lg p-3 text-[11px] font-mono text-emerald-300 max-h-48 overflow-y-auto whitespace-pre-wrap select-all">
+                  {sqlDDLCode}
+                </pre>
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 2: ULTRAMSG */}
+          {activeTab === 'ultramsg' && (
+            <div className="space-y-6">
+
+              <div className="bg-sky-500/10 border border-sky-500/20 rounded-xl p-4 text-xs text-sky-300 space-y-2">
+                <div className="flex items-center space-x-2 font-bold text-sm text-sky-400">
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Notificaciones WhatsApp Automatizadas con Ultramsg</span>
+                </div>
+                <p>
+                  Al registrar albaranes de entrada o emitir certificados, la aplicación enviará automáticamente los detalles del ticket o certificado al WhatsApp del cliente si la opción de móvil está activada.
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveUltramsg} className="bg-slate-950 p-4 border border-slate-800 rounded-xl space-y-4">
+                <h3 className="text-sm font-bold text-white flex items-center justify-between">
+                  <span>Configuración de la API Ultramsg</span>
+                  {UltramsgService.isConfigured() ? (
+                    <span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                      ● Ultramsg Activo
+                    </span>
+                  ) : (
+                    <span className="text-xs bg-slate-800 text-slate-400 border border-slate-700 px-2 py-0.5 rounded-full">
+                      Sin Configurar
+                    </span>
+                  )}
+                </h3>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Ultramsg Instance ID
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="instance12345"
+                    value={instanceId}
+                    onChange={(e) => setInstanceId(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Ultramsg Token
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="abc123xyztoken"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="submit"
+                    className="flex items-center space-x-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs transition"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Guardar Ultramsg</span>
+                  </button>
+
+                  {ultramsgSaved && (
+                    <span className="text-xs text-sky-400 font-bold flex items-center space-x-1">
+                      <Check className="w-4 h-4" />
+                      <span>¡Configuración de Ultramsg guardada!</span>
+                    </span>
+                  )}
+                </div>
+              </form>
+
+              {/* Test Phone Box */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Probar Envío de WhatsApp</h4>
+                <div className="flex gap-2">
+                  <input
+                    type="tel"
+                    placeholder="+34600000000"
+                    value={testPhone}
+                    onChange={(e) => setTestPhone(e.target.value)}
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                  <button
+                    type="button"
+                    disabled={testStatus.loading || !testPhone}
+                    onClick={handleSendTestWhatsApp}
+                    className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold px-4 py-2 rounded-lg text-xs transition border border-slate-700 disabled:opacity-50"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{testStatus.loading ? 'Enviando...' : 'Probar Envío'}</span>
+                  </button>
+                </div>
+
+                {testStatus.message && (
+                  <p className={`text-xs font-medium mt-1 ${testStatus.success ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {testStatus.message}
+                  </p>
+                )}
+              </div>
+
+            </div>
+          )}
+
+        </div>
+
+        {/* Footer */}
+        <div className="bg-slate-950 px-6 py-3 border-t border-slate-800 flex justify-end">
+          <button
+            onClick={onClose}
+            className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-5 py-2 rounded-lg text-xs transition"
+          >
+            Cerrar
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+};
