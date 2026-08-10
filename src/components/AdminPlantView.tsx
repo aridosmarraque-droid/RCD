@@ -19,8 +19,8 @@ import { Albaran, Certificate, Client, WasteType } from '../types/rcd';
 import { ClientsDirectoryView } from './ClientsDirectoryView';
 import { PhotoLightboxModal } from './PhotoLightboxModal';
 import { openPrintableCertificate } from '../utils/certificatePdf';
-import { IssueCertificateModal } from './IssueCertificateModal.tsx';
-import { WasteTypesConfigModal } from './WasteTypesConfigModal.tsx';
+import { IssueCertificateModal } from './IssueCertificateModal';
+import { WasteTypesConfigModal } from './WasteTypesConfigModal';
 import { RCDService } from '../services/rcdStorage';
 
 interface AdminPlantViewProps {
