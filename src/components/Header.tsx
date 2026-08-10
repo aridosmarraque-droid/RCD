@@ -28,37 +28,16 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex flex-col sm:flex-row items-center justify-between py-3 gap-3">
           
           {/* Logo & Plant Name */}
-          <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-start">
+          <div className="flex items-center space-x-3 w-full sm:w-auto justify-start">
             <div className="flex items-center space-x-3">
               <div className="bg-emerald-500 p-2.5 rounded-xl shadow-lg shadow-emerald-500/20 text-slate-950 font-bold flex items-center justify-center">
                 <Factory className="w-6 h-6" />
               </div>
               <div>
-                <div className="flex items-center space-x-2">
-                  <h1 className="font-bold text-lg text-white leading-tight">Planta RCD EcoMarraque</h1>
-                  {isSupabaseConfigured ? (
-                    <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2 py-0.5 rounded-full font-medium border border-emerald-500/30 flex items-center space-x-1">
-                      <Database className="w-3 h-3" />
-                      <span>Supabase BBDD</span>
-                    </span>
-                  ) : (
-                    <span className="bg-amber-500/20 text-amber-400 text-xs px-2 py-0.5 rounded-full font-medium border border-amber-500/30">
-                      BBDD Pendiente
-                    </span>
-                  )}
-                </div>
+                <h1 className="font-bold text-lg text-white leading-tight">Planta RCD</h1>
                 <p className="text-xs text-slate-400">Residuos de Construcción y Demolición</p>
               </div>
             </div>
-
-            {/* Mobile Settings Button */}
-            <button
-              onClick={onOpenSettings}
-              title="Configuración BBDD Supabase y Ultramsg"
-              className="sm:hidden text-slate-400 hover:text-white p-2 rounded-lg border border-slate-800 bg-slate-950"
-            >
-              <Settings className="w-4 h-4 text-emerald-400" />
-            </button>
           </div>
 
           {/* Mode Switcher Buttons */}
@@ -101,38 +80,27 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Right Controls */}
-          <div className="hidden lg:flex items-center space-x-3">
-            {mode === 'client' && (
-              <div className="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
-                <Users className="w-4 h-4 text-sky-400" />
-                <span className="text-xs text-slate-300 font-medium">Cliente Activo:</span>
-                <select
-                  value={selectedClientId}
-                  onChange={(e) => setSelectedClientId(e.target.value)}
-                  className="bg-slate-900 text-white text-xs font-semibold rounded-md px-2 py-1 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                >
-                  {clientsList.length > 0 ? (
-                    clientsList.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.code} - {c.name}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="">Sin clientes registrados</option>
-                  )}
-                </select>
-              </div>
-            )}
-
-            <button
-              onClick={onOpenSettings}
-              title="Configurar Supabase BBDD y Ultramsg WhatsApp"
-              className="flex items-center space-x-1.5 text-xs text-slate-300 hover:text-white bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-lg border border-emerald-500/30 transition font-medium"
-            >
-              <Settings className="w-4 h-4" />
-              <span>Ajustes BBDD / WhatsApp</span>
-            </button>
-          </div>
+          {mode === 'client' && (
+            <div className="hidden lg:flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
+              <Users className="w-4 h-4 text-sky-400" />
+              <span className="text-xs text-slate-300 font-medium">Cliente Activo:</span>
+              <select
+                value={selectedClientId}
+                onChange={(e) => setSelectedClientId(e.target.value)}
+                className="bg-slate-900 text-white text-xs font-semibold rounded-md px-2 py-1 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              >
+                {clientsList.length > 0 ? (
+                  clientsList.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.code} - {c.name}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">Sin clientes registrados</option>
+                )}
+              </select>
+            </div>
+          )}
 
         </div>
       </div>
