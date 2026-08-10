@@ -11,13 +11,17 @@ import {
   CheckCircle2,
   Factory,
   RefreshCw,
-  Search
+  Search,
+  Trash2,
+  Settings
 } from 'lucide-react';
-import { Albaran, Certificate, Client } from '../types/rcd';
+import { Albaran, Certificate, Client, WasteType } from '../types/rcd';
 import { ClientsDirectoryView } from './ClientsDirectoryView';
 import { PhotoLightboxModal } from './PhotoLightboxModal';
 import { openPrintableCertificate } from '../utils/certificatePdf';
 import { IssueCertificateModal } from './IssueCertificateModal';
+import { WasteTypesConfigModal } from './WasteTypesConfigModal';
+import { RCDService } from '../services/rcdStorage';
 
 interface AdminPlantViewProps {
   clients: Client[];
@@ -39,6 +43,12 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
   // State for issuing certificate on behalf of selected client
   const [selectedClientForCert, setSelectedClientForCert] = useState<Client | null>(null);
 
+  // State for Waste Types Configuration Modal
+  const [showWasteTypesModal, setShowWasteTypesModal] = useState(false);
+
+  // Waste types list
+  const configuredWasteTypes = RCDService.getWasteTypes();
+
   // Global Metrics
   const totalTons = albaranes.reduce((acc, a) => acc + a.quantityTons, 0);
   const totalCertifiedTons = certificates.reduce((acc, c) => acc + c.totalTons, 0);
@@ -59,7 +69,17 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
     wasteBreakdownMap[alb.wasteTypeCode].count += 1;
   });
 
-  const wasteBreakdownList = Object.values(wasteBreakdownMap);
+  const handleDeleteAlbaran = async (alb: Albaran) => {
+    if (alb.certified) {
+      alert(`El albarán Nº ${alb.numAlbaran} ya tiene un certificado emitido (${alb.certificateNumber}) y NO se puede eliminar.`);
+      return;
+    }
+
+    if (confirm(`¿Está seguro de eliminar permanentemente el albarán Nº ${alb.numAlbaran}?`)) {
+      await RCDService.deleteAlbaran(alb.id);
+      onRefreshData();
+    }
+  };
 
   const filteredAlbaranes = albaranes.filter(
     (a) =>
@@ -79,46 +99,54 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
             <span className="bg-amber-500/20 text-amber-400 font-bold text-xs px-2.5 py-1 rounded-lg border border-amber-500/30">
               Panel Administrador Planta
             </span>
-            <span className="text-slate-500">•</span>
-            <span className="text-slate-400 text-xs">SAP Business One Live Bridge</span>
           </div>
-          <h2 className="text-xl font-extrabold text-white">Gestión Global Planta RCD EcoMarraque</h2>
+          <h2 className="text-xl font-extrabold text-white">Gestión Global Planta RCD</h2>
         </div>
 
-        {/* Quick Tabs */}
-        <div className="flex items-center space-x-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+        {/* Action Button & Quick Tabs */}
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => setAdminTab('analytics')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-              adminTab === 'analytics' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-            }`}
+            onClick={() => setShowWasteTypesModal(true)}
+            className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition shadow-lg shadow-emerald-500/20"
           >
-            📊 Resumen & Métricas
+            <Settings className="w-4 h-4" />
+            <span>Configurar Tipos de Residuos & Capacidades</span>
           </button>
-          <button
-            onClick={() => setAdminTab('albaranes')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-              adminTab === 'albaranes' ? 'bg-emerald-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            📄 Todos los Albaranes ({albaranes.length})
-          </button>
-          <button
-            onClick={() => setAdminTab('clients')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-              adminTab === 'clients' ? 'bg-sky-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            👥 Fichas de Clientes ({clients.length})
-          </button>
-          <button
-            onClick={() => setAdminTab('certificates')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-              adminTab === 'certificates' ? 'bg-purple-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            📜 Certificados ({certificates.length})
-          </button>
+
+          <div className="flex items-center space-x-1 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+            <button
+              onClick={() => setAdminTab('analytics')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                adminTab === 'analytics' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              📊 Métricas & Capacidades
+            </button>
+            <button
+              onClick={() => setAdminTab('albaranes')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                adminTab === 'albaranes' ? 'bg-emerald-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              📄 Todos los Albaranes ({albaranes.length})
+            </button>
+            <button
+              onClick={() => setAdminTab('clients')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                adminTab === 'clients' ? 'bg-sky-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              👥 Fichas de Clientes ({clients.length})
+            </button>
+            <button
+              onClick={() => setAdminTab('certificates')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                adminTab === 'certificates' ? 'bg-purple-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              📜 Certificados ({certificates.length})
+            </button>
+          </div>
         </div>
       </div>
 
@@ -152,34 +180,70 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
             </div>
           </div>
 
-          {/* Waste Code Breakdown Table */}
+          {/* Waste Capacity and Remaining Capacity per Waste Type */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-            <h3 className="font-bold text-white text-base flex items-center space-x-2">
-              <BarChart3 className="w-5 h-5 text-emerald-400" />
-              <span>Desglose de Residuos Entrados en Planta (Códigos LER)</span>
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-white text-base flex items-center space-x-2">
+                <BarChart3 className="w-5 h-5 text-emerald-400" />
+                <span>Residuo Entrado y Capacidad Restante por Tipo de Residuo (LER)</span>
+              </h3>
+              <button
+                onClick={() => setShowWasteTypesModal(true)}
+                className="text-xs text-emerald-400 hover:text-emerald-300 font-bold underline"
+              >
+                Editar Capacidades
+              </button>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {wasteBreakdownList.map((wb) => {
-                const pct = totalTons > 0 ? ((wb.tons / totalTons) * 100).toFixed(1) : '0';
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {configuredWasteTypes.map((wt) => {
+                const enteredTons = wasteBreakdownMap[wt.code]?.tons || 0;
+                const maxCap = wt.maxCapacityTons || 5000;
+                const remainingTons = Math.max(0, maxCap - enteredTons);
+                const occupancyPct = Math.min(100, Math.round((enteredTons / maxCap) * 100));
+
+                let barColor = 'bg-emerald-500';
+                let textColor = 'text-emerald-400';
+                if (occupancyPct > 85) {
+                  barColor = 'bg-rose-500';
+                  textColor = 'text-rose-400';
+                } else if (occupancyPct > 60) {
+                  barColor = 'bg-amber-500';
+                  textColor = 'text-amber-400';
+                }
+
                 return (
-                  <div key={wb.code} className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
+                  <div key={wt.code} className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
                     <div className="flex justify-between items-start">
                       <span className="font-mono font-bold text-xs text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                        LER {wb.code}
+                        LER {wt.code}
                       </span>
-                      <span className="text-xs font-extrabold text-white">{wb.tons.toFixed(2)} t</span>
+                      <span className="text-[11px] font-bold text-slate-400">{wt.category}</span>
                     </div>
 
-                    <div className="text-xs font-semibold text-slate-200 truncate">{wb.name}</div>
+                    <div className="text-xs font-bold text-white line-clamp-1">{wt.name}</div>
 
-                    <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
-                      <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Residuo Entrado:</span>
+                        <span className="font-extrabold text-white text-sm">{enteredTons.toFixed(2)} t</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Capacidad Restante:</span>
+                        <span className={`font-extrabold text-sm ${textColor}`}>
+                          {remainingTons.toFixed(2)} t
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="flex justify-between text-[10px] text-slate-400 pt-1">
-                      <span>{wb.count} entregas</span>
-                      <span>{pct}% del total en planta</span>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-semibold text-slate-400">
+                        <span>Ocupación de Planta: {occupancyPct}%</span>
+                        <span>Máx: {maxCap} t</span>
+                      </div>
+                      <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
+                        <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${occupancyPct}%` }} />
+                      </div>
                     </div>
                   </div>
                 );
@@ -221,6 +285,7 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                     <th className="py-3 px-4 text-right">Cantidad (t)</th>
                     <th className="py-3 px-4 text-center">Fotos</th>
                     <th className="py-3 px-4 text-center">Estado</th>
+                    <th className="py-3 px-4 text-center">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
@@ -249,6 +314,25 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                           <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full text-[10px] font-bold border border-emerald-500/20">
                             🟢 LIBRE
                           </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        {alb.certified ? (
+                          <button
+                            disabled
+                            title="No se puede eliminar: El albarán tiene un certificado emitido."
+                            className="p-1.5 text-slate-600 bg-slate-900 rounded cursor-not-allowed border border-slate-800"
+                          >
+                            <Trash2 className="w-4 h-4 opacity-40" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleDeleteAlbaran(alb)}
+                            title="Eliminar Albarán"
+                            className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded transition"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         )}
                       </td>
                     </tr>
@@ -317,6 +401,13 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
           }}
         />
       )}
+
+      {/* Waste Types & Capacity Config Modal */}
+      <WasteTypesConfigModal
+        isOpen={showWasteTypesModal}
+        onClose={() => setShowWasteTypesModal(false)}
+        onDataChanged={onRefreshData}
+      />
 
     </div>
   );
