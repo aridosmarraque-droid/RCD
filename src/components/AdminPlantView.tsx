@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+mport React, { useState } from 'react';
 import {
   BarChart3,
   Users,
@@ -19,8 +19,8 @@ import { Albaran, Certificate, Client, WasteType } from '../types/rcd';
 import { ClientsDirectoryView } from './ClientsDirectoryView';
 import { PhotoLightboxModal } from './PhotoLightboxModal';
 import { openPrintableCertificate } from '../utils/certificatePdf';
-import { IssueCertificateModal } from './IssueCertificateModal';
-import { WasteTypesConfigModal } from './WasteTypesConfigModal';
+import { IssueCertificateModal } from './IssueCertificateModal.tsx';
+import { WasteTypesConfigModal } from './WasteTypesConfigModal.tsx';
 import { RCDService } from '../services/rcdStorage';
 
 interface AdminPlantViewProps {
