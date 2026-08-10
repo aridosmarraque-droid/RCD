@@ -68,6 +68,12 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     reader.readAsDataURL(file);
   };
 
+  // State for unrecognized waste type prompt
+  const [unrecognizedWasteType, setUnrecognizedWasteType] = useState<{ code: string; name: string } | null>(null);
+
+  // Available waste types from storage
+  const availableWasteTypes = RCDService.getWasteTypes();
+
   // Run Gemini API Vision OCR on the real SAP Albarán photo
   const runGeminiOCR = async (imageBase64: string, mimeType: string) => {
     setIsScanning(true);
@@ -115,15 +121,28 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
           setScanNotes('Lectura OCR completada. Datos reales del albarán extraídos.');
         }
 
-        if (extractedData.wasteTypeCode) {
-          const wasteCode = extractedData.wasteTypeCode.trim();
-          const matched = OFFICIAL_WASTE_TYPES.find((w: WasteType) => w.code === wasteCode);
+        // Waste Type dynamic matching
+        if (extractedData.wasteTypeCode || extractedData.wasteTypeName) {
+          const wasteCode = (extractedData.wasteTypeCode || '').trim();
+          const wasteName = (extractedData.wasteTypeName || '').trim();
+          const currentTypes = RCDService.getWasteTypes();
+          
+          const matched = currentTypes.find(
+            (w: WasteType) =>
+              (wasteCode && w.code.trim().toLowerCase() === wasteCode.toLowerCase()) ||
+              (wasteName && w.name.trim().toLowerCase().includes(wasteName.toLowerCase()))
+          );
+
           if (matched) {
             setWasteTypeCode(matched.code);
             setWasteTypeName(matched.name);
-          } else if (extractedData.wasteTypeName) {
-            setWasteTypeCode(wasteCode);
-            setWasteTypeName(extractedData.wasteTypeName);
+          } else if (wasteCode || wasteName) {
+            // Unrecognized waste type extracted from albarán! Prompt operator to create it
+            const newCodeStr = wasteCode || '17 09 04';
+            const newNameStr = wasteName || 'Residuo Capturado de Albarán';
+            setWasteTypeCode(newCodeStr);
+            setWasteTypeName(newNameStr);
+            setUnrecognizedWasteType({ code: newCodeStr, name: newNameStr });
           }
         }
 
@@ -319,17 +338,13 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                 <FileText className="w-5 h-5 text-emerald-400" />
                 <span>Captura o Selecciona Albarán SAP</span>
               </h3>
-              <span className="text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full font-medium flex items-center space-x-1">
-                <Sparkles className="w-3 h-3 text-purple-400" />
-                <span>Gemini AI Vision</span>
-              </span>
             </div>
 
             {/* Photo Capture or Upload Buttons */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-              <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold py-3 px-3 rounded-xl flex items-center justify-center space-x-2 shadow-lg shadow-emerald-600/20 transition text-xs sm:text-sm">
-                <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-slate-950 flex-shrink-0" />
-                <span>Hacer Foto</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-lg shadow-emerald-600/20 transition text-sm">
+                <Camera className="w-5 h-5 text-slate-950 flex-shrink-0" />
+                <span>Hacer Foto del Albarán</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -341,9 +356,9 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                 />
               </label>
 
-              <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 text-white font-semibold py-3 px-3 rounded-xl border border-slate-700 flex items-center justify-center space-x-2 transition text-xs sm:text-sm">
-                <Upload className="w-4 h-4 sm:w-5 sm:h-5 text-slate-300 flex-shrink-0" />
-                <span>Subir Galería</span>
+              <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 text-white font-semibold py-3.5 px-4 rounded-xl border border-slate-700 flex items-center justify-center space-x-2 transition text-sm">
+                <Upload className="w-5 h-5 text-slate-300 flex-shrink-0" />
+                <span>Subir de Galería</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -353,72 +368,6 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                   }}
                 />
               </label>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsScanning(true);
-                  const canvas = document.createElement('canvas');
-                  canvas.width = 600;
-                  canvas.height = 800;
-                  const ctx = canvas.getContext('2d');
-                  if (ctx) {
-                    ctx.fillStyle = '#f8fafc';
-                    ctx.fillRect(0, 0, 600, 800);
-                    ctx.fillStyle = '#0f172a';
-                    ctx.font = 'bold 22px monospace';
-                    ctx.fillText('PLANTA RECICLAJE RCD ECOMARRAQUE', 30, 50);
-                    ctx.font = '14px monospace';
-                    ctx.fillStyle = '#475569';
-                    ctx.fillText('Báscula #1 - Ticket de Entrada SAP Business One', 30, 75);
-                    ctx.fillRect(30, 90, 540, 2);
-
-                    const randomId = Math.floor(1000 + Math.random() * 9000);
-                    ctx.fillStyle = '#0f172a';
-                    ctx.font = '16px monospace';
-                    ctx.fillText(`ALBARÁN SAP Nº: ALB-2026-0${randomId}`, 30, 130);
-                    ctx.fillText(`CLIENTE: CONSTRUCCIONES Y REFORMAS MARRAQUE S.L.`, 30, 160);
-                    ctx.fillText(`CÓDIGO CLIENTE: C-00104 | CIF: B-41920391`, 30, 190);
-                    ctx.fillText(`FECHA: ${new Date().toISOString().split('T')[0]}  HORA: 11:45`, 30, 220);
-                    ctx.fillText(`MATRÍCULA VEHÍCULO: 8492-KZX`, 30, 250);
-                    ctx.fillText(`CONDUCTOR: Manuel Gómez Trujillo`, 30, 280);
-                    ctx.fillRect(30, 310, 540, 1);
-                    ctx.font = 'bold 16px monospace';
-                    ctx.fillText('RESIDUO (CÓDIGO LER): 17 01 01', 30, 350);
-                    ctx.font = '15px monospace';
-                    ctx.fillText('DENOMINACIÓN: Hormigón y Piedra (Escombro Limpio)', 30, 380);
-                    ctx.fillRect(30, 410, 540, 1);
-                    ctx.fillText('PESO BRUTO (Entrada): 28.45 t', 30, 450);
-                    ctx.fillText('TARA (Salida):        13.60 t', 30, 480);
-                    ctx.font = 'bold 20px monospace';
-                    ctx.fillStyle = '#047857';
-                    ctx.fillText('NETO REGISTRADO:      14.85 t', 30, 520);
-                  }
-
-                  const sampleBase64 = canvas.toDataURL('image/jpeg');
-                  setAlbaranPhoto(sampleBase64);
-
-                  setTimeout(() => {
-                    const randomNum = Math.floor(1000 + Math.random() * 9000);
-                    setNumAlbaran(`ALB-2026-0${randomNum}`);
-                    setClientCode('C-00104');
-                    setClientName('CONSTRUCCIONES MARRAQUE S.L.');
-                    setWasteTypeCode('17 01 01');
-                    setWasteTypeName('Hormigón y Piedra (Escombro Limpio)');
-                    setQuantityTons(14.85);
-                    setLicensePlate('8492-KZX');
-                    setDateStr(new Date().toISOString().split('T')[0]);
-                    setTimeStr('11:45');
-                    setScanNotes('Ticket SAP de prueba cargado correctamente.');
-                    setIsScanning(false);
-                    setShowVerificationModal(true);
-                  }, 800);
-                }}
-                className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 font-semibold py-3 px-3 rounded-xl border border-purple-700/60 flex items-center justify-center space-x-2 transition text-xs sm:text-sm"
-              >
-                <Sparkles className="w-4 h-4 text-purple-300 flex-shrink-0" />
-                <span>Ticket Ejemplo SAP</span>
-              </button>
             </div>
 
             {/* OCR Processing Loader */}
@@ -517,19 +466,26 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                 <select
                   value={wasteTypeCode}
                   onChange={(e) => {
-                    const matched = OFFICIAL_WASTE_TYPES.find((w: WasteType) => w.code === e.target.value);
+                    const matched = availableWasteTypes.find((w: WasteType) => w.code === e.target.value);
                     if (matched) {
                       setWasteTypeCode(matched.code);
                       setWasteTypeName(matched.name);
+                    } else {
+                      setWasteTypeCode(e.target.value);
                     }
                   }}
                   className="w-full bg-slate-950 text-white font-medium text-xs sm:text-sm border border-slate-800 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none"
                 >
-                  {OFFICIAL_WASTE_TYPES.map((wt: WasteType) => (
+                  {availableWasteTypes.map((wt: WasteType) => (
                     <option key={wt.code} value={wt.code}>
                       LER {wt.code} - {wt.name} ({wt.pricePerTon} €/t)
                     </option>
                   ))}
+                  {!availableWasteTypes.some((w) => w.code === wasteTypeCode) && (
+                    <option value={wasteTypeCode}>
+                      LER {wasteTypeCode} - {wasteTypeName}
+                    </option>
+                  )}
                 </select>
               </div>
 
@@ -866,6 +822,141 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
             <RefreshCw className="w-5 h-5" />
             <span>Registrar Siguiente Camión</span>
           </button>
+        </div>
+      )}
+
+      {/* MODAL 1: Unrecognized Waste Type Prompt */}
+      {unrecognizedWasteType && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/50 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center space-x-3 text-amber-400">
+              <div className="bg-amber-500/20 p-2.5 rounded-xl border border-amber-500/30">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-base text-white">¿Crear Nuevo Tipo de Residuo?</h3>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              El tipo de residuo capturado en el albarán escaneado:
+            </p>
+
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs font-mono space-y-1">
+              <div className="text-amber-400 font-bold">Código LER: {unrecognizedWasteType.code}</div>
+              <div className="text-white font-sans">{unrecognizedWasteType.name}</div>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              No figura en el listado configurado de la planta. ¿Desea añadirlo automáticamente al catálogo de la planta?
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-2 pt-2">
+              <button
+                onClick={() => setUnrecognizedWasteType(null)}
+                className="w-full sm:w-1/2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-2.5 rounded-xl text-xs transition"
+              >
+                No, Seleccionar de la Lista
+              </button>
+              <button
+                onClick={() => {
+                  RCDService.addOrUpdateWasteType({
+                    code: unrecognizedWasteType.code,
+                    name: unrecognizedWasteType.name,
+                    category: 'Limpio',
+                    pricePerTon: 12.0,
+                    maxCapacityTons: 5000,
+                    description: `Residuo LER ${unrecognizedWasteType.code} - ${unrecognizedWasteType.name}`,
+                  });
+                  setUnrecognizedWasteType(null);
+                }}
+                className="w-full sm:w-1/2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center space-x-1"
+              >
+                <Check className="w-4 h-4" />
+                <span>Sí, Crear Residuo</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: Verification Modal of Captured Albaran Data */}
+      {showVerificationModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-emerald-500/40 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-5 my-auto">
+            {/* Modal Header */}
+            <div className="flex items-center space-x-3">
+              <div className="bg-emerald-500/20 text-emerald-400 p-2.5 rounded-xl border border-emerald-500/30">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-white">Verificación de Datos Capturados</h3>
+                <p className="text-xs text-slate-400">Revise la información leída del albarán por el operario</p>
+              </div>
+            </div>
+
+            {/* Extracted Data Card */}
+            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-2 border-b border-slate-800/80 pb-2.5">
+                <div>
+                  <span className="text-slate-400 block text-[11px]">Nº Albarán SAP:</span>
+                  <span className="font-mono font-bold text-white text-sm">{numAlbaran || 'Sin capturar'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[11px]">Matrícula Camión:</span>
+                  <span className="font-mono font-bold text-amber-400 text-sm">{licensePlate || 'Sin capturar'}</span>
+                </div>
+              </div>
+
+              <div className="border-b border-slate-800/80 pb-2.5">
+                <span className="text-slate-400 block text-[11px]">Cliente / Transportista:</span>
+                <span className="font-semibold text-white">
+                  {clientCode ? `[${clientCode}] ` : ''}{clientName || 'Cliente No Identificado'}
+                </span>
+              </div>
+
+              <div className="border-b border-slate-800/80 pb-2.5">
+                <span className="text-slate-400 block text-[11px]">Tipo de Residuo RCD (Código LER):</span>
+                <span className="font-bold text-emerald-400">
+                  LER {wasteTypeCode} - {wasteTypeName}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-slate-400 block text-[11px]">Cantidad Neta:</span>
+                  <span className="font-extrabold text-white text-sm">{quantityTons.toFixed(2)} Toneladas</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[11px]">Fecha y Hora:</span>
+                  <span className="font-medium text-slate-200">{dateStr} {timeStr}</span>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 text-center font-medium">
+              ¿Los datos son correctos para avanzar al siguiente paso de captura de fotos?
+            </p>
+
+            {/* Modal Actions */}
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button
+                onClick={() => setShowVerificationModal(false)}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-3 rounded-xl text-xs transition border border-slate-700"
+              >
+                Revisar / Modificar Ficha
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowVerificationModal(false);
+                  setCurrentStep(2);
+                }}
+                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold py-3 rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 flex items-center justify-center space-x-1"
+              >
+                <span>Confirmar y Continuar</span>
+                <Check className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
