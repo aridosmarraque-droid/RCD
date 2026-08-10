@@ -4,6 +4,7 @@ export interface WasteType {
   category: 'Limpio' | 'Sucio' | 'Tierras' | 'Peligroso' | 'Valorizable';
   pricePerTon: number;
   description: string;
+  maxCapacityTons?: number; // Plant max storage capacity in tons for this waste type
 }
 
 export interface Client {
