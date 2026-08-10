@@ -9,6 +9,7 @@ export const OFFICIAL_WASTE_TYPES: WasteType[] = [
     category: 'Limpio',
     pricePerTon: 8.5,
     description: 'Bloques de hormigón, mortero, piedra natural sin mezcla de plásticos ni maderas.',
+    maxCapacityTons: 10000,
   },
   {
     code: '17 01 02',
@@ -16,6 +17,7 @@ export const OFFICIAL_WASTE_TYPES: WasteType[] = [
     category: 'Limpio',
     pricePerTon: 9.0,
     description: 'Material cerámico de tabiquería, teja roja, gres y azulejos.',
+    maxCapacityTons: 8000,
   },
   {
     code: '17 01 07',
@@ -23,6 +25,7 @@ export const OFFICIAL_WASTE_TYPES: WasteType[] = [
     category: 'Limpio',
     pricePerTon: 11.0,
     description: 'Mezcla limpia de materiales pétreos y cerámicos sin impropios.',
+    maxCapacityTons: 12000,
   },
   {
     code: '17 05 04',
@@ -30,6 +33,7 @@ export const OFFICIAL_WASTE_TYPES: WasteType[] = [
     category: 'Tierras',
     pricePerTon: 6.0,
     description: 'Tierras limpias procedente de desbroces, cimentaciones y vaciados de obras.',
+    maxCapacityTons: 20000,
   },
   {
     code: '17 09 04',
@@ -37,6 +41,7 @@ export const OFFICIAL_WASTE_TYPES: WasteType[] = [
     category: 'Sucio',
     pricePerTon: 18.5,
     description: 'Mezclas de RCD con resto de yesos, maderas, plásticos o sacos de papel.',
+    maxCapacityTons: 5000,
   },
   {
     code: '17 02 01',
@@ -44,6 +49,7 @@ export const OFFICIAL_WASTE_TYPES: WasteType[] = [
     category: 'Valorizable',
     pricePerTon: 14.0,
     description: 'Palets, tableros de encofrar, vigas y recortes de madera.',
+    maxCapacityTons: 3000,
   },
   {
     code: '17 04 05',
@@ -51,6 +57,7 @@ export const OFFICIAL_WASTE_TYPES: WasteType[] = [
     category: 'Valorizable',
     pricePerTon: 0.0,
     description: 'Varillas de ferralla, perfiles de acero, tuberías metálicas.',
+    maxCapacityTons: 2000,
   },
 ];
 
@@ -58,6 +65,7 @@ const STORAGE_KEYS = {
   CLIENTS: 'rcd_app_clients_v3',
   ALBARANES: 'rcd_app_albaranes_v3',
   CERTIFICATES: 'rcd_app_certificates_v3',
+  WASTE_TYPES: 'rcd_app_waste_types_v3',
 };
 
 // DEMO DATA CLEARED AS REQUESTED BY USER
@@ -419,10 +427,48 @@ export class RCDService {
     return newCertificate;
   }
 
+  // ===============================================
+  // WASTE TYPES MANAGEMENT
+  // ===============================================
+  static getWasteTypes(): WasteType[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.WASTE_TYPES);
+      if (!data) {
+        this.saveWasteTypes(OFFICIAL_WASTE_TYPES);
+        return OFFICIAL_WASTE_TYPES;
+      }
+      return JSON.parse(data);
+    } catch {
+      return OFFICIAL_WASTE_TYPES;
+    }
+  }
+
+  static saveWasteTypes(types: WasteType[]): void {
+    localStorage.setItem(STORAGE_KEYS.WASTE_TYPES, JSON.stringify(types));
+  }
+
+  static addOrUpdateWasteType(wasteType: WasteType): void {
+    const current = this.getWasteTypes();
+    const idx = current.findIndex((w) => w.code.trim() === wasteType.code.trim());
+    if (idx >= 0) {
+      current[idx] = { ...current[idx], ...wasteType };
+    } else {
+      current.push(wasteType);
+    }
+    this.saveWasteTypes(current);
+  }
+
+  static deleteWasteType(code: string): void {
+    const filtered = this.getWasteTypes().filter((w) => w.code.trim() !== code.trim());
+    this.saveWasteTypes(filtered);
+  }
+
   static clearAllData(): void {
     localStorage.removeItem(STORAGE_KEYS.CLIENTS);
     localStorage.removeItem(STORAGE_KEYS.ALBARANES);
     localStorage.removeItem(STORAGE_KEYS.CERTIFICATES);
+    localStorage.removeItem(STORAGE_KEYS.WASTE_TYPES);
   }
 }
+
 
