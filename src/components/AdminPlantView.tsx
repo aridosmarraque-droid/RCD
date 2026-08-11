@@ -13,7 +13,12 @@ import {
   RefreshCw,
   Search,
   Trash2,
-  Settings
+  Settings,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Calendar,
+  Filter
 } from 'lucide-react';
 import { Albaran, Certificate, Client, WasteType } from '../types/rcd';
 import { ClientsDirectoryView } from './ClientsDirectoryView';
@@ -30,6 +35,24 @@ interface AdminPlantViewProps {
   onRefreshData: () => void;
 }
 
+type SortField = 'numAlbaran' | 'clientName' | 'date' | 'licensePlate' | 'wasteTypeName' | 'quantityTons';
+
+const MONTHS_LIST = [
+  { value: 'all', label: 'Todos los meses' },
+  { value: '01', label: '01 - Enero' },
+  { value: '02', label: '02 - Febrero' },
+  { value: '03', label: '03 - Marzo' },
+  { value: '04', label: '04 - Abril' },
+  { value: '05', label: '05 - Mayo' },
+  { value: '06', label: '06 - Junio' },
+  { value: '07', label: '07 - Julio' },
+  { value: '08', label: '08 - Agosto' },
+  { value: '09', label: '09 - Septiembre' },
+  { value: '10', label: '10 - Octubre' },
+  { value: '11', label: '11 - Noviembre' },
+  { value: '12', label: '12 - Diciembre' },
+];
+
 export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
   clients,
   albaranes,
@@ -39,6 +62,18 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
   const [adminTab, setAdminTab] = useState<'analytics' | 'albaranes' | 'clients' | 'certificates'>('analytics');
   const [selectedPhotoAlbaran, setSelectedPhotoAlbaran] = useState<Albaran | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Sorting state for Albaranes
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  // Filtering state (Year & Month) for Albaranes list
+  const [selectedYear, setSelectedYear] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+
+  // Exercise (Año) state for Analytics & Capacity Metrics
+  const currentYearStr = new Date().getFullYear().toString();
+  const [ejercicioYear, setEjercicioYear] = useState<string>('all');
   
   // State for issuing certificate on behalf of selected client
   const [selectedClientForCert, setSelectedClientForCert] = useState<Client | null>(null);
@@ -49,14 +84,40 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
   // Waste types list
   const configuredWasteTypes = RCDService.getWasteTypes();
 
-  // Global Metrics
-  const totalTons = albaranes.reduce((acc, a) => acc + a.quantityTons, 0);
-  const totalCertifiedTons = certificates.reduce((acc, c) => acc + c.totalTons, 0);
+  // Dynamic list of available years in dataset
+  const availableYears = Array.from(
+    new Set([
+      currentYearStr,
+      '2027',
+      '2026',
+      '2025',
+      ...albaranes.map((a) => (a.date ? a.date.substring(0, 4) : '')).filter(Boolean),
+    ])
+  ).sort((a, b) => Number(b) - Number(a));
+
+  // Filtered albaranes and certs for Analytics tab (Ejercicio)
+  const analyticsAlbaranes = albaranes.filter((alb) => {
+    if (ejercicioYear !== 'all' && alb.date) {
+      return alb.date.startsWith(ejercicioYear);
+    }
+    return true;
+  });
+
+  const analyticsCertificates = certificates.filter((cert) => {
+    if (ejercicioYear !== 'all' && cert.issueDate) {
+      return cert.issueDate.startsWith(ejercicioYear);
+    }
+    return true;
+  });
+
+  // Analytics Metrics
+  const totalTons = analyticsAlbaranes.reduce((acc, a) => acc + a.quantityTons, 0);
+  const totalCertifiedTons = analyticsCertificates.reduce((acc, c) => acc + c.totalTons, 0);
   const totalUncertifiedTons = totalTons - totalCertifiedTons;
 
-  // Breakdown by waste code
+  // Breakdown by waste code for Analytics
   const wasteBreakdownMap: Record<string, { code: string; name: string; tons: number; count: number }> = {};
-  albaranes.forEach((alb) => {
+  analyticsAlbaranes.forEach((alb) => {
     if (!wasteBreakdownMap[alb.wasteTypeCode]) {
       wasteBreakdownMap[alb.wasteTypeCode] = {
         code: alb.wasteTypeCode,
@@ -81,13 +142,80 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
     }
   };
 
-  const filteredAlbaranes = albaranes.filter(
-    (a) =>
-      a.numAlbaran.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.licensePlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.wasteTypeName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter Albaranes by search, year, and month
+  const filteredAlbaranes = albaranes.filter((alb) => {
+    const matchesSearch =
+      alb.numAlbaran.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      alb.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      alb.licensePlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      alb.wasteTypeName.toLowerCase().includes(searchTerm.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    if (selectedYear !== 'all' && alb.date) {
+      if (!alb.date.startsWith(selectedYear)) return false;
+    }
+
+    if (selectedMonth !== 'all' && alb.date) {
+      const monthPart = alb.date.substring(5, 7);
+      if (monthPart !== selectedMonth) return false;
+    }
+
+    return true;
+  });
+
+  // Sort Albaranes
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedAlbaranes = [...filteredAlbaranes].sort((a, b) => {
+    let valA: any = a[sortField];
+    let valB: any = b[sortField];
+
+    if (sortField === 'date') {
+      valA = `${a.date} ${a.time || ''}`;
+      valB = `${b.date} ${b.time || ''}`;
+    }
+
+    if (typeof valA === 'string') {
+      const cmp = valA.localeCompare(valB, 'es', { sensitivity: 'base' });
+      return sortDirection === 'asc' ? cmp : -cmp;
+    } else {
+      return sortDirection === 'asc' ? valA - valB : valB - valA;
+    }
+  });
+
+  const renderSortHeader = (field: SortField, label: string, align: 'left' | 'center' | 'right' = 'left') => {
+    const isActive = sortField === field;
+    return (
+      <th
+        onClick={() => handleSort(field)}
+        className={`py-3 px-4 cursor-pointer select-none transition hover:text-white ${
+          align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left'
+        }`}
+        title={`Pinche para ordenar por ${label} (${isActive && sortDirection === 'asc' ? 'Descendente' : 'Ascendente'})`}
+      >
+        <div className={`inline-flex items-center space-x-1.5 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
+          <span>{label}</span>
+          {isActive ? (
+            sortDirection === 'asc' ? (
+              <ArrowUp className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+            )
+          ) : (
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100" />
+          )}
+        </div>
+      </th>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -153,6 +281,30 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
       {/* TAB 1: ANALYTICS & METRICS */}
       {adminTab === 'analytics' && (
         <div className="space-y-6">
+          {/* Ejercicio / Year Selection Filter Bar */}
+          <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center space-x-2 text-white text-xs font-bold">
+              <Calendar className="w-4 h-4 text-amber-400" />
+              <span>Selección de Ejercicio de Capacidad y Métricas de Planta:</span>
+            </div>
+
+            <div className="flex items-center space-x-2 w-full sm:w-auto">
+              <span className="text-xs text-slate-400 font-medium">Ejercicio:</span>
+              <select
+                value={ejercicioYear}
+                onChange={(e) => setEjercicioYear(e.target.value)}
+                className="bg-slate-950 text-emerald-400 font-extrabold text-xs border border-slate-800 rounded-xl px-3 py-2 focus:border-emerald-500 focus:outline-none"
+              >
+                <option value="all">Todos los Ejercicios Históricos</option>
+                {availableYears.map((yr) => (
+                  <option key={yr} value={yr}>
+                    Ejercicio {yr}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           {/* Key Metric Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
@@ -256,8 +408,9 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
       {/* TAB 2: ALL ALBARANES */}
       {adminTab === 'albaranes' && (
         <div className="space-y-4">
-          <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
-            <div className="relative w-full max-w-md">
+          <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-lg">
+            {/* Search Input */}
+            <div className="relative flex-1">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               <input
                 type="text"
@@ -267,9 +420,46 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                 className="w-full bg-slate-950 text-white text-xs pl-9 pr-3 py-2.5 rounded-xl border border-slate-800 focus:outline-none"
               />
             </div>
-            <span className="text-xs text-slate-400 font-medium hidden sm:inline-block">
-              Mostrando {filteredAlbaranes.length} albaranes de SAP
-            </span>
+
+            {/* Year & Month Dropdowns */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center space-x-1.5 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
+                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-slate-400 font-medium">Año:</span>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(e.target.value)}
+                  className="bg-slate-900 text-white font-bold text-xs border border-slate-700 rounded-lg px-2 py-1 focus:outline-none"
+                >
+                  <option value="all">Todos los Años</option>
+                  {availableYears.map((yr) => (
+                    <option key={yr} value={yr}>
+                      {yr}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center space-x-1.5 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
+                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-slate-400 font-medium">Mes:</span>
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="bg-slate-900 text-white font-bold text-xs border border-slate-700 rounded-lg px-2 py-1 focus:outline-none"
+                >
+                  {MONTHS_LIST.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <span className="text-xs text-slate-400 font-medium px-3 py-2 bg-slate-950 rounded-xl border border-slate-800">
+                Mostrando <strong className="text-emerald-400 font-bold">{sortedAlbaranes.length}</strong> albaranes
+              </span>
+            </div>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
@@ -277,19 +467,19 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="bg-slate-950 text-slate-400 uppercase font-bold text-[11px] border-b border-slate-800">
                   <tr>
-                    <th className="py-3 px-4">Albarán SAP</th>
-                    <th className="py-3 px-4">Cliente / Transportista</th>
-                    <th className="py-3 px-4">Fecha / Hora</th>
-                    <th className="py-3 px-4">Matrícula</th>
-                    <th className="py-3 px-4">Residuo (LER)</th>
-                    <th className="py-3 px-4 text-right">Cantidad (t)</th>
+                    {renderSortHeader('numAlbaran', 'Albarán SAP')}
+                    {renderSortHeader('clientName', 'Cliente / Transportista')}
+                    {renderSortHeader('date', 'Fecha / Hora')}
+                    {renderSortHeader('licensePlate', 'Matrícula')}
+                    {renderSortHeader('wasteTypeName', 'Residuo (LER)')}
+                    {renderSortHeader('quantityTons', 'Cantidad (t)', 'right')}
                     <th className="py-3 px-4 text-center">Fotos</th>
                     <th className="py-3 px-4 text-center">Estado</th>
                     <th className="py-3 px-4 text-center">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {filteredAlbaranes.map((alb) => (
+                  {sortedAlbaranes.map((alb) => (
                     <tr key={alb.id} className="hover:bg-slate-800/50 transition">
                       <td className="py-3 px-4 font-mono font-bold text-emerald-400">{alb.numAlbaran}</td>
                       <td className="py-3 px-4 font-bold text-white">{alb.clientName}</td>
