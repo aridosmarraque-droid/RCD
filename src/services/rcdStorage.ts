@@ -258,9 +258,20 @@ export class RCDService {
     }
   }
 
+  static isAlbaranNumDuplicate(numAlbaran: string): boolean {
+    if (!numAlbaran || !numAlbaran.trim()) return false;
+    const clean = numAlbaran.trim().toLowerCase();
+    const albaranes = this.getAlbaranes();
+    return albaranes.some((a) => a.numAlbaran.trim().toLowerCase() === clean);
+  }
+
   static async createAlbaran(
     newAlbaran: Omit<Albaran, 'id' | 'certified' | 'createdAt'>
   ): Promise<Albaran> {
+    if (this.isAlbaranNumDuplicate(newAlbaran.numAlbaran)) {
+      throw new Error('Pongase en contacto con la oficina, albaran SAP ya registrado.');
+    }
+
     const albaranes = this.getAlbaranes();
 
     // Ensure client exists
@@ -516,5 +527,3 @@ export class RCDService {
     localStorage.removeItem(STORAGE_KEYS.WASTE_TYPES);
   }
 }
-
-
