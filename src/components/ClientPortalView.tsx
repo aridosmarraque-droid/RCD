@@ -12,7 +12,10 @@ import {
   Download,
   Filter,
   PlusCircle,
-  AlertCircle
+  AlertCircle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { Albaran, Certificate, Client } from '../types/rcd';
 import { PhotoLightboxModal } from './PhotoLightboxModal';
@@ -26,6 +29,8 @@ interface ClientPortalViewProps {
   onRefreshData: () => void;
 }
 
+type ClientSortField = 'numAlbaran' | 'date' | 'licensePlate' | 'wasteTypeName' | 'quantityTons';
+
 export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   client,
   albaranes,
@@ -36,6 +41,10 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const [filterCertified, setFilterCertified] = useState<'all' | 'uncertified' | 'certified'>('all');
   const [selectedPhotoAlbaran, setSelectedPhotoAlbaran] = useState<Albaran | null>(null);
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+
+  // Sorting
+  const [sortField, setSortField] = useState<ClientSortField>('date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Client specific albaranes & certs
   const clientAlbaranes = albaranes.filter(
@@ -48,11 +57,63 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const clientCertificates = certificates.filter((c) => c.clientId === client.id);
 
   // Filtered list
-  const displayedAlbaranes = clientAlbaranes.filter((a) => {
+  const filteredAlbaranes = clientAlbaranes.filter((a) => {
     if (filterCertified === 'uncertified') return !a.certified;
     if (filterCertified === 'certified') return a.certified;
     return true;
   });
+
+  const handleSort = (field: ClientSortField) => {
+    if (sortField === field) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
+
+  const displayedAlbaranes = [...filteredAlbaranes].sort((a, b) => {
+    let valA: any = a[sortField];
+    let valB: any = b[sortField];
+
+    if (sortField === 'date') {
+      valA = `${a.date} ${a.time || ''}`;
+      valB = `${b.date} ${b.time || ''}`;
+    }
+
+    if (typeof valA === 'string') {
+      const cmp = valA.localeCompare(valB, 'es', { sensitivity: 'base' });
+      return sortDir === 'asc' ? cmp : -cmp;
+    } else {
+      return sortDir === 'asc' ? valA - valB : valB - valA;
+    }
+  });
+
+  const renderSortHeader = (field: ClientSortField, label: string, align: 'left' | 'center' | 'right' = 'left') => {
+    const isActive = sortField === field;
+    return (
+      <th
+        onClick={() => handleSort(field)}
+        className={`py-3 px-4 cursor-pointer select-none transition hover:text-white ${
+          align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left'
+        }`}
+        title={`Pinche para ordenar por ${label}`}
+      >
+        <div className={`inline-flex items-center space-x-1.5 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
+          <span>{label}</span>
+          {isActive ? (
+            sortDir === 'asc' ? (
+              <ArrowUp className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+            )
+          ) : (
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100" />
+          )}
+        </div>
+      </th>
+    );
+  };
 
   const totalTonnage = clientAlbaranes.reduce((sum, a) => sum + a.quantityTons, 0);
   const availableTonnage = availableUncertified.reduce((sum, a) => sum + a.quantityTons, 0);
@@ -181,11 +242,11 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="bg-slate-950 text-slate-400 uppercase font-bold text-[11px] border-b border-slate-800">
                   <tr>
-                    <th className="py-3 px-4">Nº Albarán SAP</th>
-                    <th className="py-3 px-4">Fecha / Hora</th>
-                    <th className="py-3 px-4">Matrícula</th>
-                    <th className="py-3 px-4">Residuo (Código LER)</th>
-                    <th className="py-3 px-4 text-right">Cantidad (t)</th>
+                    {renderSortHeader('numAlbaran', 'Nº Albarán SAP')}
+                    {renderSortHeader('date', 'Fecha / Hora')}
+                    {renderSortHeader('licensePlate', 'Matrícula')}
+                    {renderSortHeader('wasteTypeName', 'Residuo (Código LER)')}
+                    {renderSortHeader('quantityTons', 'Cantidad (t)', 'right')}
                     <th className="py-3 px-4 text-center">Fotos</th>
                     <th className="py-3 px-4 text-center">Estado Certificado</th>
                   </tr>
