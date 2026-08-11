@@ -35,10 +35,10 @@ export const WasteTypesConfigModal: React.FC<WasteTypesConfigModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleUpdateCapacityAndPrice = (code: string, capacity: number, price: number) => {
+  const handleUpdateCapacityPriceAndName = (code: string, capacity: number, price: number, name: string) => {
     const updated = wasteTypes.map((wt) => {
       if (wt.code === code) {
-        return { ...wt, maxCapacityTons: capacity, pricePerTon: price };
+        return { ...wt, maxCapacityTons: capacity, pricePerTon: price, name };
       }
       return wt;
     });
@@ -234,14 +234,24 @@ export const WasteTypesConfigModal: React.FC<WasteTypesConfigModalProps> = ({
                 {wasteTypes.map((wt) => (
                   <tr key={wt.code} className="hover:bg-slate-900/50">
                     <td className="py-2.5 px-3 font-mono font-bold text-emerald-400">LER {wt.code}</td>
-                    <td className="py-2.5 px-3 font-semibold text-white">{wt.name}</td>
+                    <td className="py-2.5 px-3">
+                      <input
+                        type="text"
+                        value={wt.name}
+                        onChange={(e) =>
+                          handleUpdateCapacityPriceAndName(wt.code, wt.maxCapacityTons || 5000, wt.pricePerTon, e.target.value)
+                        }
+                        placeholder="Nombre / Descripción del residuo"
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-white font-semibold focus:border-emerald-500 focus:outline-none"
+                      />
+                    </td>
                     <td className="py-2.5 px-3">
                       <input
                         type="number"
                         step="0.5"
                         value={wt.pricePerTon}
                         onChange={(e) =>
-                          handleUpdateCapacityAndPrice(wt.code, wt.maxCapacityTons || 5000, parseFloat(e.target.value) || 0)
+                          handleUpdateCapacityPriceAndName(wt.code, wt.maxCapacityTons || 5000, parseFloat(e.target.value) || 0, wt.name)
                         }
                         className="w-20 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-emerald-400 font-bold focus:border-emerald-500 focus:outline-none"
                       />
@@ -253,7 +263,7 @@ export const WasteTypesConfigModal: React.FC<WasteTypesConfigModalProps> = ({
                           step="100"
                           value={wt.maxCapacityTons || 5000}
                           onChange={(e) =>
-                            handleUpdateCapacityAndPrice(wt.code, parseFloat(e.target.value) || 1000, wt.pricePerTon)
+                            handleUpdateCapacityPriceAndName(wt.code, parseFloat(e.target.value) || 1000, wt.pricePerTon, wt.name)
                           }
                           className="w-28 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-amber-400 font-bold focus:border-amber-500 focus:outline-none"
                         />
