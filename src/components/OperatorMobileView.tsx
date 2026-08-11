@@ -76,11 +76,13 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     reader.readAsDataURL(file);
   };
 
-  // State for unrecognized waste type prompt
+  // State for unrecognized waste type & client prompts
   const [unrecognizedWasteType, setUnrecognizedWasteType] = useState<{ code: string; name: string } | null>(null);
+  const [unrecognizedClient, setUnrecognizedClient] = useState<{ code: string; name: string } | null>(null);
 
-  // Available waste types from storage
+  // Available waste types and clients from storage
   const availableWasteTypes = RCDService.getWasteTypes();
+  const registeredClients = RCDService.getClients();
 
   // Run Gemini API Vision OCR on the real SAP Albarán photo
   const runGeminiOCR = async (imageBase64: string, mimeType: string) => {
@@ -92,8 +94,33 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
 
       if (extractedData) {
         setNumAlbaran(extractedData.numAlbaran ? extractedData.numAlbaran.trim() : '');
-        setClientCode(extractedData.clientCode ? extractedData.clientCode.trim() : '');
-        setClientName(extractedData.clientName ? extractedData.clientName.trim() : '');
+
+        // Clean client code and name
+        let cName = (extractedData.clientName || '').trim();
+        let cCode = (extractedData.clientCode || '').trim();
+
+        // Strip bracketed code like [C0048] if present in clientName
+        const codeMatch = cName.match(/^(?:\[([A-Z0-9\-]{3,10})\]|\(([A-Z0-9\-]{3,10})\)|([A-Z][0-9]{3,6})\s*[\-:]?)\s*(.*)/i);
+        if (codeMatch) {
+          const extractedC = (codeMatch[1] || codeMatch[2] || codeMatch[3] || '').trim();
+          const restN = (codeMatch[4] || '').trim();
+          if (extractedC && (!cCode || cCode === 'C-00100' || cCode.includes('['))) {
+            cCode = extractedC.toUpperCase();
+          }
+          if (restN && restN.length >= 2) {
+            cName = restN;
+          }
+        }
+        cName = cName.replace(/^\[[A-Z0-9\-]+\]\s*/i, '').replace(/^[\-:\.]\s*/, '').trim();
+        cCode = cCode.replace(/^\[|\]$/g, '').trim();
+
+        setClientName(cName);
+        setClientCode(cCode || 'C-00100');
+
+        // Check if client is registered in system directory
+        if (cName && !RCDService.isClientRegistered(cName, cCode)) {
+          setUnrecognizedClient({ code: cCode || 'C-NEW', name: cName });
+        }
         
         const qty = Number(extractedData.quantityTons);
         setQuantityTons(!isNaN(qty) && qty > 0 ? qty : 0);
@@ -249,32 +276,43 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
 
   // Submit complete entry
   const handleSubmitEntry = async () => {
-    if (!numAlbaran || !clientName) {
-      alert('Por favor complete los datos del albarán de SAP.');
+    if (!numAlbaran.trim() || !clientName.trim()) {
+      alert('Por favor complete el Número de Albarán y la Razón Social del Cliente.');
       return;
     }
 
-    const created = await RCDService.createAlbaran({
-      numAlbaran: numAlbaran.trim().toUpperCase(),
-      clientId: '',
-      clientName: clientName.trim(),
-      clientCode: clientCode.trim() || 'C-00100',
-      date: dateStr,
-      time: timeStr,
-      wasteTypeCode: wasteTypeCode,
-      wasteTypeName: wasteTypeName,
-      quantityTons: Number(quantityTons),
-      licensePlate: licensePlate.trim().toUpperCase(),
-      albaranPhotoUrl: albaranPhoto || undefined,
-      truckPhotoUrl: truckPhoto || undefined,
-      unloadPhotoUrl: unloadPhoto || undefined,
-      plantZone: plantZone,
-      gpsCoords: '37.3891° N, 5.9845° W',
-    });
+    try {
+      let cleanName = clientName.trim().replace(/^\[[A-Z0-9\-]+\]\s*/i, '').replace(/^[\-:\.]\s*/, '').trim();
+      let cleanCode = clientCode.trim().replace(/^\[|\]$/g, '');
 
-    setSubmittedAlbaran(created);
-    onAlbaranCreated(created);
-    setCurrentStep(4);
+      // Ensure client is created in system directory if not already present
+      await RCDService.upsertClientFromScan(cleanCode, cleanName);
+
+      const created = await RCDService.createAlbaran({
+        numAlbaran: numAlbaran.trim().toUpperCase(),
+        clientId: '',
+        clientName: cleanName,
+        clientCode: cleanCode || 'C-00100',
+        date: dateStr,
+        time: timeStr,
+        wasteTypeCode: wasteTypeCode,
+        wasteTypeName: wasteTypeName,
+        quantityTons: Number(quantityTons),
+        licensePlate: licensePlate.trim().toUpperCase(),
+        albaranPhotoUrl: albaranPhoto || undefined,
+        truckPhotoUrl: truckPhoto || undefined,
+        unloadPhotoUrl: unloadPhoto || undefined,
+        plantZone: plantZone,
+        gpsCoords: '37.3891° N, 5.9845° W',
+      });
+
+      setSubmittedAlbaran(created);
+      onAlbaranCreated(created);
+      setCurrentStep(4);
+    } catch (err: any) {
+      console.error('Error al registrar albarán:', err);
+      alert(`Error al guardar el albarán en el sistema: ${err.message || 'Error de almacenamiento'}`);
+    }
   };
 
   // Reset for next truck entry
@@ -440,24 +478,66 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
 
               {/* Cliente SAP */}
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Cliente / Transportista *
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  <input
-                    type="text"
-                    value={clientCode}
-                    onChange={(e) => setClientCode(e.target.value)}
-                    placeholder="Código (C-00104)"
-                    className="col-span-1 bg-slate-950 text-slate-300 font-mono text-xs border border-slate-800 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
-                    placeholder="Razón Social del Cliente"
-                    className="col-span-2 bg-slate-950 text-white font-semibold text-xs sm:text-sm border border-slate-800 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none"
-                  />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Cliente / Transportista *
+                  </label>
+                  {clientName && RCDService.isClientRegistered(clientName, clientCode) ? (
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 font-semibold">
+                      ✓ Registrado
+                    </span>
+                  ) : clientName ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await RCDService.upsertClientFromScan(clientCode, clientName);
+                        alert(`Cliente "${clientName}" registrado en la base de datos.`);
+                        setUnrecognizedClient(null);
+                      }}
+                      className="text-[10px] bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 px-2 py-0.5 rounded-full border border-amber-500/30 transition flex items-center space-x-1"
+                    >
+                      <span>+ Registrar nuevo cliente</span>
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2">
+                  {/* Dropdown for quick selection of registered clients */}
+                  <select
+                    value={registeredClients.find(c => c.name.toLowerCase() === clientName.toLowerCase())?.id || ''}
+                    onChange={(e) => {
+                      const selected = registeredClients.find(c => c.id === e.target.value);
+                      if (selected) {
+                        setClientName(selected.name);
+                        setClientCode(selected.code);
+                      }
+                    }}
+                    className="w-full bg-slate-950 text-slate-300 font-medium text-xs border border-slate-800 rounded-xl px-3 py-2 focus:border-emerald-500 focus:outline-none mb-1"
+                  >
+                    <option value="">-- Seleccionar cliente registrado (o escribir abajo) --</option>
+                    {registeredClients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        [{c.code}] {c.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      type="text"
+                      value={clientCode}
+                      onChange={(e) => setClientCode(e.target.value)}
+                      placeholder="Código SAP (ej: C0048)"
+                      className="col-span-1 bg-slate-950 text-slate-300 font-mono text-xs border border-slate-800 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={clientName}
+                      onChange={(e) => setClientName(e.target.value)}
+                      placeholder="Razón Social del Cliente"
+                      className="col-span-2 bg-slate-950 text-white font-semibold text-xs sm:text-sm border border-slate-800 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -875,6 +955,52 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
               >
                 <Check className="w-4 h-4" />
                 <span>Sí, Crear Residuo</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Unrecognized Client Prompt */}
+      {unrecognizedClient && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-blue-500/50 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center space-x-3 text-blue-400">
+              <div className="bg-blue-500/20 p-2.5 rounded-xl border border-blue-500/30">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-base text-white">¿Registrar Nuevo Cliente en la Planta?</h3>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              El cliente extraído del albarán de SAP:
+            </p>
+
+            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs font-mono space-y-1">
+              <div className="text-blue-400 font-bold">Código SAP: {unrecognizedClient.code || 'Sin Código'}</div>
+              <div className="text-white font-sans font-bold text-sm">{unrecognizedClient.name}</div>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              No figura registrado en la base de datos de la planta. ¿Desea darlo de alta automáticamente como cliente oficial?
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-2 pt-2">
+              <button
+                onClick={() => setUnrecognizedClient(null)}
+                className="w-full sm:w-1/2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-2.5 rounded-xl text-xs transition"
+              >
+                No, Seleccionar Existente
+              </button>
+              <button
+                onClick={async () => {
+                  await RCDService.upsertClientFromScan(unrecognizedClient.code, unrecognizedClient.name);
+                  setUnrecognizedClient(null);
+                }}
+                className="w-full sm:w-1/2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center space-x-1"
+              >
+                <Check className="w-4 h-4" />
+                <span>Sí, Registrar Cliente</span>
               </button>
             </div>
           </div>
