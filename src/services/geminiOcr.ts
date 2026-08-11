@@ -25,6 +25,14 @@ export async function scanAlbaranWithGemini(
   imageBase64: string,
   mimeType: string = 'image/jpeg'
 ): Promise<Partial<OCRScanResult> | null> {
+  let detectedMimeType = mimeType || 'image/jpeg';
+  if (imageBase64.startsWith('data:')) {
+    const header = imageBase64.split(';')[0];
+    if (header.includes(':')) {
+      detectedMimeType = header.split(':')[1] || detectedMimeType;
+    }
+  }
+
   const base64Data = imageBase64.includes(',')
     ? imageBase64.split(',')[1]
     : imageBase64;
@@ -34,12 +42,12 @@ export async function scanAlbaranWithGemini(
     const response = await fetch('/api/scan-albaran', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageBase64, mimeType }),
+      body: JSON.stringify({ imageBase64, mimeType: detectedMimeType }),
     });
 
     if (response.ok) {
       const data = await response.json();
-      if (data && (data.numAlbaran || data.clientName || data.quantityTons)) {
+      if (data && (data.numAlbaran || data.clientName || data.quantityTons !== undefined)) {
         return data;
       }
     } else {
@@ -67,7 +75,7 @@ export async function scanAlbaranWithGemini(
               {
                 inlineData: {
                   data: base64Data,
-                  mimeType: mimeType || 'image/jpeg',
+                  mimeType: detectedMimeType,
                 },
               },
               { text: ALBARAN_PROMPT },
@@ -80,7 +88,11 @@ export async function scanAlbaranWithGemini(
       });
 
       if (res.text) {
-        const parsed = JSON.parse(res.text);
+        let cleanText = res.text.trim();
+        if (cleanText.startsWith('```')) {
+          cleanText = cleanText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+        }
+        const parsed = JSON.parse(cleanText);
         return parsed;
       }
     } catch (clientErr) {
@@ -88,19 +100,20 @@ export async function scanAlbaranWithGemini(
     }
   }
 
-  // 3. Fallback extraction for real Albarán document photos (e.g. Áridos Marraque / SAP / Báscula)
-  // Ensures uploading an Albarán image always captures the data even on static Vercel hosting without 405 error
+  // 3. Clean fallback when OCR service is unavailable or image cannot be parsed automatically
+  // Return empty/blank fields so stale or hardcoded data from other tickets is NEVER shown
   return {
-    numAlbaran: '2607565',
-    clientCode: 'C0335',
-    clientName: 'PREFABRICADOS IBAFERSAN, S.L.',
+    numAlbaran: '',
+    clientCode: '',
+    clientName: '',
     wasteTypeCode: '17 01 01',
-    wasteTypeName: 'TN DE GRAVA 11-22 MACHAQUEO (0370-DdP-0920)',
-    quantityTons: 27.72,
-    licensePlate: '6509CZZ/R4057BCG',
-    date: '2026-08-07',
-    time: '11:45',
-    notes: 'Albarán Áridos Marraque S.L. / Transportista: FCO. JAVIER CAZORLA MARTINEZ',
+    wasteTypeName: 'Hormigón y Piedra (Escombro Limpio)',
+    quantityTons: 0,
+    licensePlate: '',
+    date: new Date().toISOString().split('T')[0],
+    time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+    notes: 'No se pudo leer el albarán por OCR automático. Por favor introduzca los datos manualmente.',
   };
 }
+
 
