@@ -76,9 +76,10 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     reader.readAsDataURL(file);
   };
 
-  // State for unrecognized waste type & client prompts
+  // State for unrecognized waste type & client & duplicate prompts
   const [unrecognizedWasteType, setUnrecognizedWasteType] = useState<{ code: string; name: string } | null>(null);
   const [unrecognizedClient, setUnrecognizedClient] = useState<{ code: string; name: string } | null>(null);
+  const [duplicateAlbaranNum, setDuplicateAlbaranNum] = useState<string | null>(null);
 
   // Available waste types and clients from storage
   const availableWasteTypes = RCDService.getWasteTypes();
@@ -93,7 +94,12 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
       extractedData = await scanAlbaranWithGemini(imageBase64, mimeType);
 
       if (extractedData) {
-        setNumAlbaran(extractedData.numAlbaran ? extractedData.numAlbaran.trim() : '');
+        const extNum = extractedData.numAlbaran ? extractedData.numAlbaran.trim() : '';
+        setNumAlbaran(extNum);
+
+        if (extNum && RCDService.isAlbaranNumDuplicate(extNum)) {
+          setDuplicateAlbaranNum(extNum.toUpperCase());
+        }
 
         // Clean client code and name
         let cName = (extractedData.clientName || '').trim();
@@ -278,6 +284,11 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
   const handleSubmitEntry = async () => {
     if (!numAlbaran.trim() || !clientName.trim()) {
       alert('Por favor complete el Número de Albarán y la Razón Social del Cliente.');
+      return;
+    }
+
+    if (RCDService.isAlbaranNumDuplicate(numAlbaran)) {
+      setDuplicateAlbaranNum(numAlbaran.trim().toUpperCase());
       return;
     }
 
@@ -614,6 +625,10 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
               onClick={() => {
                 if (!numAlbaran.trim() || !clientName.trim()) {
                   alert('Por favor complete el Número de Albarán y la Razón Social del Cliente.');
+                  return;
+                }
+                if (RCDService.isAlbaranNumDuplicate(numAlbaran)) {
+                  setDuplicateAlbaranNum(numAlbaran.trim().toUpperCase());
                   return;
                 }
                 setCurrentStep(2);
@@ -1076,6 +1091,11 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
 
               <button
                 onClick={() => {
+                  if (RCDService.isAlbaranNumDuplicate(numAlbaran)) {
+                    setShowVerificationModal(false);
+                    setDuplicateAlbaranNum(numAlbaran.trim().toUpperCase());
+                    return;
+                  }
                   setShowVerificationModal(false);
                   setCurrentStep(2);
                 }}
@@ -1089,6 +1109,35 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
         </div>
       )}
 
+      {/* MODAL: Duplicate Albaran Warning */}
+      {duplicateAlbaranNum && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-rose-500/60 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 text-center">
+            <div className="w-14 h-14 bg-rose-500/20 text-rose-400 rounded-full flex items-center justify-center mx-auto border border-rose-500/40">
+              <AlertCircle className="w-8 h-8 text-rose-400" />
+            </div>
+            
+            <h3 className="font-extrabold text-lg text-white">Albarán SAP Ya Registrado</h3>
+            
+            <div className="bg-slate-950 p-3 rounded-xl border border-rose-500/30 text-rose-300 font-mono font-bold text-sm">
+              Nº {duplicateAlbaranNum}
+            </div>
+
+            <p className="text-sm text-slate-200 font-medium leading-relaxed bg-rose-950/30 p-3 rounded-xl border border-rose-800/40">
+              Pongase en contacto con la oficina, albaran SAP ya registrado.
+            </p>
+
+            <button
+              onClick={() => setDuplicateAlbaranNum(null)}
+              className="w-full bg-rose-500 hover:bg-rose-400 text-slate-950 font-bold py-3.5 rounded-xl text-xs transition shadow-lg shadow-rose-500/20"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
+
