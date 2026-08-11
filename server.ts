@@ -32,6 +32,14 @@ async function startServer() {
         },
       });
 
+      let detectedMimeType = mimeType || 'image/jpeg';
+      if (imageBase64.startsWith('data:')) {
+        const header = imageBase64.split(';')[0];
+        if (header.includes(':')) {
+          detectedMimeType = header.split(':')[1] || detectedMimeType;
+        }
+      }
+
       const base64Data = imageBase64.includes(',')
         ? imageBase64.split(',')[1]
         : imageBase64;
@@ -45,7 +53,7 @@ async function startServer() {
               {
                 inlineData: {
                   data: base64Data,
-                  mimeType: mimeType || 'image/jpeg',
+                  mimeType: detectedMimeType,
                 },
               },
               {
@@ -76,9 +84,14 @@ Devuelve la información en formato JSON estricto con los siguientes campos:
 
       if (response.text) {
         try {
-          const parsed = JSON.parse(response.text);
+          let cleanText = response.text.trim();
+          if (cleanText.startsWith('```')) {
+            cleanText = cleanText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+          }
+          const parsed = JSON.parse(cleanText);
           return res.json(parsed);
         } catch (pErr) {
+          console.error('JSON parse error from Gemini:', pErr);
           return res.json({ notes: response.text });
         }
       } else {
