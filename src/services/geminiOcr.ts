@@ -1,5 +1,4 @@
 import { GoogleGenAI } from '@google/genai';
-import { createWorker } from 'tesseract.js';
 import { OCRScanResult } from '../types/rcd';
 
 const ALBARAN_PROMPT = `Analiza minuciosamente esta foto de un albarán, ticket de báscula o documento de entrega de materiales o residuos (RCD/SAP / Áridos Marraque).
@@ -20,16 +19,20 @@ Devuelve un JSON estricto con los siguientes campos:
 }`;
 
 /**
- * Tesseract client-side OCR fallback when Gemini API is unavailable or returns 405/error.
+ * Client-side OCR fallback when Gemini API is unavailable.
  * Reads Spanish text directly from the image in browser and parses SAP / Áridos Marraque ticket fields using regex.
  */
 async function scanWithTesseract(imageBase64: string): Promise<Partial<OCRScanResult> | null> {
   try {
+    const tesseractModule = await import('tesseract.js');
+    const createWorker = tesseractModule.createWorker;
+    if (!createWorker) return null;
+
     const worker = await createWorker('spa');
     const ret = await worker.recognize(imageBase64);
     await worker.terminate();
 
-    const text = ret.data.text || '';
+    const text = ret.data?.text || '';
     if (!text.trim()) return null;
 
     const result: Partial<OCRScanResult> = {};
@@ -189,4 +192,3 @@ export async function scanAlbaranWithGemini(
     notes: 'No se pudo leer automáticamente. Introduzca los datos manualmente.',
   };
 }
-
