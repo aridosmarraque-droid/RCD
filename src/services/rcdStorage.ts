@@ -149,12 +149,29 @@ export class RCDService {
     return updated;
   }
 
+  static isClientRegistered(clientName: string, clientCode?: string): boolean {
+    if (!clientName) return false;
+    let cleanName = clientName.trim().replace(/^\[[A-Z0-9\-]+\]\s*/i, '').replace(/^[\-:\.]\s*/, '').trim();
+    let cleanCode = (clientCode || '').trim().replace(/^\[|\]$/g, '');
+
+    const clients = this.getClients();
+    return clients.some(
+      (c) =>
+        (cleanCode && c.code.toLowerCase() === cleanCode.toLowerCase()) ||
+        (cleanName && c.name.toLowerCase() === cleanName.toLowerCase())
+    );
+  }
+
   static async upsertClientFromScan(clientCode: string, clientName: string): Promise<Client> {
     const clients = this.getClients();
+
+    let cleanName = (clientName || '').trim().replace(/^\[[A-Z0-9\-]+\]\s*/i, '').replace(/^[\-:\.]\s*/, '').trim();
+    let cleanCode = (clientCode || '').trim().replace(/^\[|\]$/g, '');
+
     let existing = clients.find(
       (c) =>
-        (clientCode && c.code.toLowerCase() === clientCode.toLowerCase()) ||
-        (clientName && c.name.toLowerCase() === clientName.toLowerCase())
+        (cleanCode && c.code.toLowerCase() === cleanCode.toLowerCase()) ||
+        (cleanName && c.name.toLowerCase() === cleanName.toLowerCase())
     );
 
     if (existing) {
@@ -163,10 +180,10 @@ export class RCDService {
 
     const newClient: Client = {
       id: `cli-${Date.now()}`,
-      code: clientCode || `C-${Math.floor(1000 + Math.random() * 9000)}`,
-      name: clientName || 'Cliente No Identificado',
+      code: cleanCode || `C-${Math.floor(1000 + Math.random() * 9000)}`,
+      name: cleanName || 'Cliente No Identificado',
       cif: 'B-' + Math.floor(10000000 + Math.random() * 90000000),
-      email: `contacto@${(clientName || 'cliente').toLowerCase().replace(/[^a-z0-9]/g, '')}.es`,
+      email: `contacto@${(cleanName || 'cliente').toLowerCase().replace(/[^a-z0-9]/g, '')}.es`,
       mobile: '+346' + Math.floor(10000000 + Math.random() * 90000000),
       notifyEmail: true,
       notifyMobile: true,
@@ -197,7 +214,15 @@ export class RCDService {
     if (SupabaseService.isConfigured()) {
       try {
         const remoteAlbaranes = await SupabaseService.fetchAlbaranes();
-        if (remoteAlbaranes) {
+        if (remoteAlbaranes && Array.isArray(remoteAlbaranes)) {
+          // Merge local albaranes if remote is empty or missing newly created ones
+          const localAlbaranes = this.getAlbaranes();
+          const remoteMap = new Map(remoteAlbaranes.map((a) => [a.id, a]));
+          for (const localAlb of localAlbaranes) {
+            if (!remoteMap.has(localAlb.id)) {
+              remoteAlbaranes.push(localAlb);
+            }
+          }
           this.saveAlbaranesLocal(remoteAlbaranes);
           return remoteAlbaranes;
         }
@@ -209,7 +234,28 @@ export class RCDService {
   }
 
   static saveAlbaranesLocal(albaranes: Albaran[]): void {
-    localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(albaranes));
+    try {
+      localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(albaranes));
+    } catch (quotaErr) {
+      console.warn('LocalStorage QuotaExceededError while saving albaranes. Pruning base64 photos from older entries:', quotaErr);
+      // Prune base64 photos for older entries (keep full photos for the newest 3) to fit in localStorage limit
+      const pruned = albaranes.map((alb, index) => {
+        if (index > 2) {
+          return {
+            ...alb,
+            albaranPhotoUrl: alb.albaranPhotoUrl ? (alb.albaranPhotoUrl.length > 500 ? '[Foto Guardada]' : alb.albaranPhotoUrl) : undefined,
+            truckPhotoUrl: alb.truckPhotoUrl ? (alb.truckPhotoUrl.length > 500 ? '[Foto Guardada]' : alb.truckPhotoUrl) : undefined,
+            unloadPhotoUrl: alb.unloadPhotoUrl ? (alb.unloadPhotoUrl.length > 500 ? '[Foto Guardada]' : alb.unloadPhotoUrl) : undefined,
+          };
+        }
+        return alb;
+      });
+      try {
+        localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(pruned));
+      } catch (e2) {
+        console.error('Critical failure saving albaranes to localStorage:', e2);
+      }
+    }
   }
 
   static async createAlbaran(
