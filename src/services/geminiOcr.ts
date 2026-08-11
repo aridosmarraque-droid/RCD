@@ -7,8 +7,8 @@ Extrae la información REAL visible en la imagen. No inventes datos. Si un campo
 Devuelve un JSON estricto con los siguientes campos:
 {
   "numAlbaran": "Número o código de albarán (ej: 2607584)",
-  "clientCode": "Código de cliente si aparece (ej: C0086)",
-  "clientName": "Nombre completo de la empresa o cliente (ej: ANGEL ARTES SANCHEZ S.L.)",
+  "clientCode": "Código de cliente SAP si aparece de forma independiente o entre corchetes/paréntesis (ej: C0048, C0086)",
+  "clientName": "Razón social del cliente LIMPIA, sin incluir el código de cliente SAP entre corchetes o paréntesis (ej: 'ANGEL ARTES SANCHEZ S.L.' en lugar de '[C0048] ANGEL ARTES SANCHEZ S.L.')",
   "wasteTypeCode": "Código LER o código de material (ej: 17 01 01, 17 01 07)",
   "wasteTypeName": "Descripción del material o residuo (ej: TN DE HORMIGON)",
   "quantityTons": Número decimal exacto con las Toneladas Netas (ej: 19.8). Si figura en kg, divídelo entre 1000. Si no hay, 0,
@@ -17,6 +17,42 @@ Devuelve un JSON estricto con los siguientes campos:
   "time": "Hora en formato HH:MM (si figura)",
   "notes": "Notas adicionales o transportista"
 }`;
+
+/**
+ * Cleans extracted client data by separating SAP code like [C0048] from client name.
+ */
+export function cleanExtractedOCRData(raw: Partial<OCRScanResult>): Partial<OCRScanResult> {
+  if (!raw) return raw;
+  const result = { ...raw };
+
+  let name = (result.clientName || '').trim();
+  let code = (result.clientCode || '').trim();
+
+  // Pattern matching leading brackets like "[C0048] ANGEL ARTES SANCHEZ S.L." or "C0048 ANGEL ARTES..." or "(C0048) ..."
+  const match = name.match(/^(?:\[([A-Z0-9\-]{3,10})\]|\(([A-Z0-9\-]{3,10})\)|([A-Z][0-9]{3,6})\s*[\-:]?)\s*(.*)/i);
+  if (match) {
+    const extractedCode = (match[1] || match[2] || match[3] || '').trim();
+    const restName = (match[4] || '').trim();
+
+    if (extractedCode && (!code || code === 'C-00100' || code.includes('['))) {
+      code = extractedCode.toUpperCase();
+    }
+    if (restName && restName.length >= 2) {
+      name = restName;
+    }
+  }
+
+  // Remove any remaining leading/trailing brackets or dashes
+  name = name.replace(/^\[[A-Z0-9\-]+\]\s*/i, '').replace(/^[\-:\.]\s*/, '').trim();
+  if (code) {
+    code = code.replace(/^\[|\]$/g, '').trim();
+  }
+
+  result.clientName = name;
+  result.clientCode = code;
+
+  return result;
+}
 
 /**
  * Resizes a base64 image on an HTML Canvas so its maximum dimension is 1200px.
@@ -106,7 +142,7 @@ export async function scanAlbaranWithGemini(
     if (response.ok) {
       const data = await response.json();
       if (data && (data.numAlbaran || data.clientName || data.quantityTons !== undefined)) {
-        return data;
+        return cleanExtractedOCRData(data);
       }
     } else {
       const errJson = await response.json().catch(() => ({}));
@@ -151,7 +187,7 @@ export async function scanAlbaranWithGemini(
           cleanText = cleanText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
         }
         const parsed = JSON.parse(cleanText);
-        return parsed;
+        return cleanExtractedOCRData(parsed);
       }
     } catch (clientErr: any) {
       console.warn('Client-side Gemini Vision OCR error:', clientErr);
@@ -174,4 +210,3 @@ export async function scanAlbaranWithGemini(
       : 'No se pudo leer automáticamente. Introduzca los datos manualmente.',
   };
 }
-
