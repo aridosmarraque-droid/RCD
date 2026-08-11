@@ -19,30 +19,88 @@ Devuelve un JSON estricto con los siguientes campos:
 }`;
 
 /**
+ * Resizes a base64 image on an HTML Canvas so its maximum dimension is 1200px.
+ * This reduces 10MB camera uploads down to ~150KB-300KB, preventing Vercel payload limit (4.5MB)
+ * and 500 errors, while keeping text sharp and readable for OCR.
+ */
+async function resizeImageForOCR(dataUrl: string, maxDim = 1200): Promise<string> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !dataUrl.startsWith('data:image')) {
+      return resolve(dataUrl);
+    }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      if (width <= maxDim && height <= maxDim) {
+        return resolve(dataUrl);
+      }
+
+      if (width > height) {
+        if (width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        }
+      } else {
+        if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(dataUrl);
+
+      ctx.drawImage(img, 0, 0, width, height);
+      // Encode as JPEG at 0.85 quality
+      const resized = canvas.toDataURL('image/jpeg', 0.85);
+      resolve(resized);
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+/**
  * Perform OCR on an Albarán / SAP Ticket image using server API or client Gemini Vision.
  */
 export async function scanAlbaranWithGemini(
   imageBase64: string,
   mimeType: string = 'image/jpeg'
 ): Promise<Partial<OCRScanResult> | null> {
+  let serverErrorMsg = '';
+
+  // 0. Pre-compress image to max 1200px to ensure base64 string fits payload limits and OCR is fast
+  let preparedBase64 = imageBase64;
+  try {
+    preparedBase64 = await resizeImageForOCR(imageBase64, 1200);
+  } catch (e) {
+    console.warn('Image resize warning:', e);
+  }
+
   let detectedMimeType = mimeType || 'image/jpeg';
-  if (imageBase64.startsWith('data:')) {
-    const header = imageBase64.split(';')[0];
+  if (preparedBase64.startsWith('data:')) {
+    const header = preparedBase64.split(';')[0];
     if (header.includes(':')) {
       detectedMimeType = header.split(':')[1] || detectedMimeType;
     }
   }
 
-  const base64Data = imageBase64.includes(',')
-    ? imageBase64.split(',')[1]
-    : imageBase64;
+  const base64Data = preparedBase64.includes(',')
+    ? preparedBase64.split(',')[1]
+    : preparedBase64;
 
   // 1. Try server-side API endpoint first (/api/scan-albaran)
   try {
     const response = await fetch('/api/scan-albaran', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageBase64, mimeType: detectedMimeType }),
+      body: JSON.stringify({ imageBase64: preparedBase64, mimeType: detectedMimeType }),
     });
 
     if (response.ok) {
@@ -51,9 +109,12 @@ export async function scanAlbaranWithGemini(
         return data;
       }
     } else {
-      console.warn('Server /api/scan-albaran returned status:', response.status);
+      const errJson = await response.json().catch(() => ({}));
+      serverErrorMsg = errJson.error || `Error ${response.status} en servidor /api/scan-albaran`;
+      console.warn('Server /api/scan-albaran error:', serverErrorMsg);
     }
-  } catch (err) {
+  } catch (err: any) {
+    serverErrorMsg = err.message || 'Error de red al conectar con /api/scan-albaran';
     console.warn('Network error calling /api/scan-albaran:', err);
   }
 
@@ -68,20 +129,17 @@ export async function scanAlbaranWithGemini(
       const ai = new GoogleGenAI({ apiKey: clientKey });
       const res = await ai.models.generateContent({
         model: 'gemini-3.6-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  data: base64Data,
-                  mimeType: detectedMimeType,
-                },
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                data: base64Data,
+                mimeType: detectedMimeType,
               },
-              { text: ALBARAN_PROMPT },
-            ],
-          },
-        ],
+            },
+            { text: ALBARAN_PROMPT },
+          ],
+        },
         config: {
           responseMimeType: 'application/json',
         },
@@ -95,12 +153,12 @@ export async function scanAlbaranWithGemini(
         const parsed = JSON.parse(cleanText);
         return parsed;
       }
-    } catch (clientErr) {
+    } catch (clientErr: any) {
       console.warn('Client-side Gemini Vision OCR error:', clientErr);
     }
   }
 
-  // 3. Default clean initial values if OCR service is unavailable
+  // 3. Return initial fallback values with explicit guidance notes
   return {
     numAlbaran: '',
     clientCode: '',
@@ -111,7 +169,9 @@ export async function scanAlbaranWithGemini(
     licensePlate: '',
     date: new Date().toISOString().split('T')[0],
     time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-    notes: 'No se pudo leer automáticamente. Introduzca los datos manualmente.',
+    notes: serverErrorMsg
+      ? `Aviso: ${serverErrorMsg}. Introduzca los datos manualmente.`
+      : 'No se pudo leer automáticamente. Introduzca los datos manualmente.',
   };
 }
 
