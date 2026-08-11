@@ -59,11 +59,19 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
 
   // Handle image upload / camera capture for SAP ticket OCR
   const handleAlbaranImageSelected = async (file: File) => {
+    // Clear previous scan values so data from old tickets never persists
+    setNumAlbaran('');
+    setClientCode('');
+    setClientName('');
+    setQuantityTons(0);
+    setLicensePlate('');
+    setScanNotes('Iniciando lectura OCR...');
+
     const reader = new FileReader();
     reader.onload = async (e) => {
       const base64 = e.target?.result as string;
       setAlbaranPhoto(base64);
-      await runGeminiOCR(base64, file.type);
+      await runGeminiOCR(base64, file.type || 'image/jpeg');
     };
     reader.readAsDataURL(file);
   };
@@ -83,22 +91,15 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
       extractedData = await scanAlbaranWithGemini(imageBase64, mimeType);
 
       if (extractedData) {
-        if (extractedData.numAlbaran && extractedData.numAlbaran.trim()) {
-          setNumAlbaran(extractedData.numAlbaran.trim());
-        }
-        if (extractedData.clientCode !== undefined) {
-          setClientCode(extractedData.clientCode.trim());
-        }
-        if (extractedData.clientName && extractedData.clientName.trim()) {
-          setClientName(extractedData.clientName.trim());
-        }
-        if (extractedData.quantityTons !== undefined && extractedData.quantityTons !== null) {
-          const qty = Number(extractedData.quantityTons);
-          if (!isNaN(qty)) setQuantityTons(qty);
-        }
-        if (extractedData.licensePlate && extractedData.licensePlate.trim()) {
-          setLicensePlate(extractedData.licensePlate.trim().toUpperCase());
-        }
+        setNumAlbaran(extractedData.numAlbaran ? extractedData.numAlbaran.trim() : '');
+        setClientCode(extractedData.clientCode ? extractedData.clientCode.trim() : '');
+        setClientName(extractedData.clientName ? extractedData.clientName.trim() : '');
+        
+        const qty = Number(extractedData.quantityTons);
+        setQuantityTons(!isNaN(qty) && qty > 0 ? qty : 0);
+
+        setLicensePlate(extractedData.licensePlate ? extractedData.licensePlate.trim().toUpperCase() : '');
+
         if (extractedData.date) {
           let rawDate = extractedData.date.trim();
           if (rawDate.includes('/')) {
@@ -118,7 +119,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
         if (extractedData.notes) {
           setScanNotes(extractedData.notes);
         } else {
-          setScanNotes('Lectura OCR completada. Datos reales del albarán extraídos.');
+          setScanNotes('Lectura OCR completada. Revisa los datos extraídos.');
         }
 
         // Waste Type dynamic matching
@@ -150,10 +151,12 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
         setShowVerificationModal(true);
       } else {
         setScanNotes('No se pudo leer el albarán por OCR. Complete o revise los datos manualmente.');
+        setShowVerificationModal(true);
       }
     } catch (err) {
       console.warn('Notice running OCR:', err);
-      setScanNotes('Error de lectura OCR.');
+      setScanNotes('Error de lectura OCR. Introduzca los datos manualmente.');
+      setShowVerificationModal(true);
     } finally {
       setIsScanning(false);
     }
@@ -282,8 +285,8 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     setNumAlbaran('');
     setClientCode('');
     setClientName('');
-    setQuantityTons(15.0);
-    setLicensePlate('8492-KZX');
+    setQuantityTons(0);
+    setLicensePlate('');
     setTruckPhoto(null);
     setUnloadPhoto(null);
     setScanNotes('');
