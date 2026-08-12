@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Albaran, Certificate, Client } from '../types/rcd';
+import { Albaran, Certificate, Client, RCDUser } from '../types/rcd';
 
 const SUPABASE_STORAGE_KEYS = {
   URL: 'rcd_supabase_url',
@@ -51,6 +51,30 @@ export class SupabaseService {
   // ==========================================
   // MAPPER FUNCTIONS (TS <-> Supabase RCD columns)
   // ==========================================
+
+  private static mapUserToDB(user: RCDUser) {
+    return {
+      rcd_id: user.id,
+      rcd_name: user.name,
+      rcd_username_nif_cif: user.nifCif,
+      rcd_code: user.code,
+      rcd_user_type: user.userType,
+      rcd_client_code: user.clientCode || null,
+      rcd_created_at: user.createdAt || new Date().toISOString(),
+    };
+  }
+
+  private static mapDBToUser(row: any): RCDUser {
+    return {
+      id: row.rcd_id,
+      name: row.rcd_name,
+      nifCif: row.rcd_username_nif_cif || row.rcd_nif_cif || '',
+      code: row.rcd_code,
+      userType: row.rcd_user_type || 'trabajador',
+      clientCode: row.rcd_client_code || undefined,
+      createdAt: row.rcd_created_at || new Date().toISOString(),
+    };
+  }
 
   private static mapClientToDB(client: Client) {
     return {
@@ -337,6 +361,63 @@ export class SupabaseService {
       }
     } catch (err) {
       console.warn('Notice inserting rcd_certificates into Supabase:', err);
+    }
+  }
+
+  // ==========================================
+  // RCD USERS METHODS
+  // ==========================================
+
+  static async fetchUsers(): Promise<RCDUser[] | null> {
+    const supabase = this.getClient();
+    if (!supabase) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('rcd_users')
+        .select('*')
+        .order('rcd_created_at', { ascending: false });
+
+      if (error) {
+        console.warn('Notice fetching rcd_users from Supabase:', error.message || error);
+        return null;
+      }
+
+      return (data || []).map(this.mapDBToUser);
+    } catch (err) {
+      console.warn('Notice connecting to rcd_users on Supabase:', err);
+      return null;
+    }
+  }
+
+  static async upsertUser(user: RCDUser): Promise<void> {
+    const supabase = this.getClient();
+    if (!supabase) return;
+
+    try {
+      const row = this.mapUserToDB(user);
+      const { error } = await supabase.from('rcd_users').upsert(row, { onConflict: 'rcd_id' });
+
+      if (error) {
+        console.warn('Notice upserting rcd_users into Supabase:', error.message || error);
+      }
+    } catch (err) {
+      console.warn('Notice upserting rcd_users into Supabase:', err);
+    }
+  }
+
+  static async deleteUser(id: string): Promise<void> {
+    const supabase = this.getClient();
+    if (!supabase) return;
+
+    try {
+      const { error } = await supabase.from('rcd_users').delete().eq('rcd_id', id);
+
+      if (error) {
+        console.warn('Notice deleting rcd_users from Supabase:', error.message || error);
+      }
+    } catch (err) {
+      console.warn('Notice deleting rcd_users from Supabase:', err);
     }
   }
 }
