@@ -77,6 +77,16 @@ export interface Certificate {
   status: 'Emitido' | 'Anulado';
 }
 
+export interface RCDUser {
+  id: string;
+  name: string; // Nombre y apellidos (trabajador) o Nombre de la empresa (empresa)
+  nifCif: string; // NIF / CIF (Usuario para el inicio de sesión)
+  code: string; // Código de acceso / PIN / Clave
+  userType: 'trabajador' | 'empresa' | 'admin';
+  clientCode?: string; // Código de cliente SAP vinculado si es empresa (ej: C-00100)
+  createdAt: string;
+}
+
 export interface OCRScanResult {
   numAlbaran: string;
   clientCode: string;
