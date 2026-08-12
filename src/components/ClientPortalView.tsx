@@ -48,13 +48,21 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
 
   // Client specific albaranes & certs
   const clientAlbaranes = albaranes.filter(
-    (a) => a.clientId === client.id || a.clientCode.toLowerCase() === client.code.toLowerCase()
+    (a) =>
+      a.clientId === client.id ||
+      (a.clientCode && client.code && a.clientCode.trim().toLowerCase() === client.code.trim().toLowerCase()) ||
+      (a.clientName && client.name && a.clientName.trim().toLowerCase() === client.name.trim().toLowerCase())
   );
 
   const availableUncertified = clientAlbaranes.filter((a) => !a.certified);
   const certifiedAlbaranes = clientAlbaranes.filter((a) => a.certified);
 
-  const clientCertificates = certificates.filter((c) => c.clientId === client.id);
+  const clientCertificates = certificates.filter(
+    (c) =>
+      c.clientId === client.id ||
+      (c.clientName && client.name && c.clientName.trim().toLowerCase() === client.name.trim().toLowerCase()) ||
+      (c.clientCif && client.cif && c.clientCif.trim().toLowerCase() === client.cif.trim().toLowerCase())
+  );
 
   // Filtered list
   const filteredAlbaranes = clientAlbaranes.filter((a) => {
