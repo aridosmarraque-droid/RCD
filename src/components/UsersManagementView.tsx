@@ -37,6 +37,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({
   const [formCode, setFormCode] = useState('');
   const [formUserType, setFormUserType] = useState<'trabajador' | 'empresa' | 'admin'>('trabajador');
   const [formClientCode, setFormClientCode] = useState('');
+  const [selectedClientIdInForm, setSelectedClientIdInForm] = useState('');
   const [formError, setFormError] = useState('');
 
   const openCreateModal = () => {
@@ -45,7 +46,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({
     setFormNifCif('');
     setFormCode('');
     setFormUserType('trabajador');
-    setFormClientCode(clients[0]?.code || '');
+    setFormClientCode('');
+    setSelectedClientIdInForm('');
     setFormError('');
     setIsModalOpen(true);
   };
@@ -56,9 +58,48 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({
     setFormNifCif(user.nifCif);
     setFormCode(user.code);
     setFormUserType(user.userType);
-    setFormClientCode(user.clientCode || (clients[0]?.code || ''));
+    setFormClientCode(user.clientCode || '');
+    
+    // Match client ID if empresa
+    const matchedClient = clients.find(
+      (c) => (user.clientCode && c.code === user.clientCode) || c.cif === user.nifCif
+    );
+    setSelectedClientIdInForm(matchedClient ? matchedClient.id : '');
     setFormError('');
     setIsModalOpen(true);
+  };
+
+  const handleUserTypeChange = (type: 'trabajador' | 'empresa' | 'admin') => {
+    setFormUserType(type);
+    setFormError('');
+
+    if (type === 'empresa' && clients.length > 0) {
+      const firstClient = clients[0];
+      setSelectedClientIdInForm(firstClient.id);
+      setFormName(firstClient.name);
+      setFormNifCif(firstClient.cif);
+      setFormClientCode(firstClient.code);
+      if (!formCode) setFormCode(firstClient.code);
+    } else if (type !== 'empresa') {
+      setSelectedClientIdInForm('');
+      if (!editingUser) {
+        setFormName('');
+        setFormNifCif('');
+        setFormClientCode('');
+      }
+    }
+  };
+
+  const handleSelectClientCompany = (clientId: string) => {
+    setSelectedClientIdInForm(clientId);
+    const client = clients.find((c) => c.id === clientId);
+    if (client) {
+      setFormName(client.name);
+      setFormNifCif(client.cif);
+      setFormClientCode(client.code);
+      setFormCode(client.code);
+      setFormError('');
+    }
   };
 
   const handleSaveUser = async (e: React.FormEvent) => {
@@ -286,7 +327,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({
                 </label>
                 <select
                   value={formUserType}
-                  onChange={(e) => setFormUserType(e.target.value as any)}
+                  onChange={(e) => handleUserTypeChange(e.target.value as any)}
                   className="w-full bg-slate-950 text-white font-bold border border-slate-800 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
                 >
                   <option value="trabajador">Trabajador / Operario de Báscula</option>
@@ -295,35 +336,107 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({
                 </select>
               </div>
 
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">
-                  {formUserType === 'empresa'
-                    ? 'Nombre de la Empresa (Razón Social):'
-                    : 'Nombre y Apellidos del Trabajador:'}
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder={formUserType === 'empresa' ? 'Ej: Construcciones Marraque S.L.' : 'Ej: Juan Pérez García'}
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  className="w-full bg-slate-950 text-white font-bold border border-slate-800 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
-                />
-              </div>
+              {formUserType === 'empresa' ? (
+                <>
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1 flex items-center justify-between">
+                      <span>Seleccionar Empresa Cliente de la BBDD:</span>
+                      <span className="text-[10px] text-sky-400 font-normal">Clientes en BBDD ({clients.length})</span>
+                    </label>
+                    {clients.length === 0 ? (
+                      <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 p-2.5 rounded-xl text-[11px]">
+                        ⚠️ No hay empresas en el Directorio de Clientes. Registre primero la empresa como cliente.
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedClientIdInForm}
+                        onChange={(e) => handleSelectClientCompany(e.target.value)}
+                        className="w-full bg-slate-950 text-sky-400 font-bold border border-slate-800 rounded-xl px-3 py-2 focus:outline-none focus:border-sky-500"
+                        required
+                      >
+                        <option value="">-- Seleccione una Empresa Registrada --</option>
+                        {clients.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            [{c.code}] {c.name} - CIF: {c.cif}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
 
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">
-                  Usuario de Login (NIF o CIF):
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder={formUserType === 'empresa' ? 'Ej: B12345678' : 'Ej: 12345678A'}
-                  value={formNifCif}
-                  onChange={(e) => setFormNifCif(e.target.value)}
-                  className="w-full bg-slate-950 text-white font-mono font-bold border border-slate-800 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500 uppercase"
-                />
-              </div>
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">
+                      Nombre / Razón Social (BBDD Clientes):
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      readOnly
+                      value={formName}
+                      placeholder="Seleccione empresa arriba"
+                      className="w-full bg-slate-950/60 text-slate-300 font-bold border border-slate-800 rounded-xl px-3 py-2 cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">
+                      Usuario Login (CIF Fiscal de BBDD):
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      readOnly
+                      value={formNifCif}
+                      placeholder="CIF automático"
+                      className="w-full bg-slate-950/60 text-emerald-400 font-mono font-bold border border-slate-800 rounded-xl px-3 py-2 cursor-not-allowed uppercase"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">
+                      Código de Cliente SAP Vinculado:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      readOnly
+                      value={formClientCode}
+                      placeholder="Código SAP automático"
+                      className="w-full bg-slate-950/60 text-sky-400 font-mono font-bold border border-slate-800 rounded-xl px-3 py-2 cursor-not-allowed uppercase"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">
+                      Nombre y Apellidos del Trabajador:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: Juan Pérez García"
+                      value={formName}
+                      onChange={(e) => setFormName(e.target.value)}
+                      className="w-full bg-slate-950 text-white font-bold border border-slate-800 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">
+                      Usuario de Login (NIF / DNI):
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: 12345678A"
+                      value={formNifCif}
+                      onChange={(e) => setFormNifCif(e.target.value)}
+                      className="w-full bg-slate-950 text-white font-mono font-bold border border-slate-800 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500 uppercase"
+                    />
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">
@@ -337,26 +450,10 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({
                   onChange={(e) => setFormCode(e.target.value)}
                   className="w-full bg-slate-950 text-white font-mono text-sm font-bold border border-slate-800 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
                 />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Esta será la clave requerida para iniciar sesión con el NIF/CIF.
+                </p>
               </div>
-
-              {formUserType === 'empresa' && (
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">
-                    Vincular con Cliente de Directorio SAP:
-                  </label>
-                  <select
-                    value={formClientCode}
-                    onChange={(e) => setFormClientCode(e.target.value)}
-                    className="w-full bg-slate-950 text-sky-400 font-mono font-bold border border-slate-800 rounded-xl px-3 py-2 focus:outline-none focus:border-sky-500"
-                  >
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.code}>
-                        [{c.code}] {c.name} ({c.cif})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
 
               <div className="flex items-center justify-end space-x-2 pt-2">
                 <button
