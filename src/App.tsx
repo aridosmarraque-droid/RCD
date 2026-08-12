@@ -44,17 +44,16 @@ export default function App() {
   const applyUserSecurity = (user: RCDUser, currentClientsList: Client[]) => {
     if (user.userType === 'empresa') {
       setMode('client');
-      // Match client profile by clientCode or NIF/CIF
+      // Match client profile by clientCode, CIF or Name
       const matchingClient = currentClientsList.find(
         (c) =>
-          (user.clientCode && c.code.toLowerCase() === user.clientCode.toLowerCase()) ||
-          (c.cif.toLowerCase() === user.nifCif.toLowerCase())
+          (user.clientCode && c.code.trim().toLowerCase() === user.clientCode.trim().toLowerCase()) ||
+          (c.cif && c.cif.trim().toLowerCase() === user.nifCif.trim().toLowerCase()) ||
+          (c.name && c.name.trim().toLowerCase() === user.name.trim().toLowerCase())
       );
 
       if (matchingClient) {
         setSelectedClientId(matchingClient.id);
-      } else if (currentClientsList.length > 0) {
-        setSelectedClientId(currentClientsList[0].id);
       }
     }
   };
@@ -75,23 +74,32 @@ export default function App() {
   };
 
   // Find active client for ClientPortalView
-  let activeClient = clients.find((c) => c.id === selectedClientId);
+  let activeClient: Client | undefined = undefined;
 
-  // If user is company and no matching client was found in DB, create virtual client profile
-  if (!activeClient && currentUser?.userType === 'empresa') {
-    activeClient = {
-      id: `client-${currentUser.id}`,
-      code: currentUser.clientCode || 'C-000',
-      name: currentUser.name,
-      cif: currentUser.nifCif,
-      email: '',
-      mobile: '',
-      notifyEmail: true,
-      notifyMobile: true,
-      createdAt: currentUser.createdAt,
-    };
-  } else if (!activeClient && clients.length > 0) {
-    activeClient = clients[0];
+  if (currentUser?.userType === 'empresa') {
+    // Strictly lock client view to the logged in company
+    activeClient = clients.find(
+      (c) =>
+        (currentUser.clientCode && c.code.trim().toLowerCase() === currentUser.clientCode.trim().toLowerCase()) ||
+        (c.cif && c.cif.trim().toLowerCase() === currentUser.nifCif.trim().toLowerCase()) ||
+        (c.name && c.name.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+    );
+
+    if (!activeClient) {
+      activeClient = {
+        id: `client-${currentUser.id}`,
+        code: currentUser.clientCode || 'C-000',
+        name: currentUser.name,
+        cif: currentUser.nifCif,
+        email: '',
+        mobile: '',
+        notifyEmail: true,
+        notifyMobile: true,
+        createdAt: currentUser.createdAt,
+      };
+    }
+  } else {
+    activeClient = clients.find((c) => c.id === selectedClientId) || clients[0];
   }
 
   // Security Gate: If not logged in, render Login screen
