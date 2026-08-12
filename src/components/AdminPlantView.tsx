@@ -20,8 +20,9 @@ import {
   Calendar,
   Filter
 } from 'lucide-react';
-import { Albaran, Certificate, Client, WasteType } from '../types/rcd';
+import { Albaran, Certificate, Client, RCDUser, WasteType } from '../types/rcd';
 import { ClientsDirectoryView } from './ClientsDirectoryView';
+import { UsersManagementView } from './UsersManagementView';
 import { PhotoLightboxModal } from './PhotoLightboxModal';
 import { openPrintableCertificate } from '../utils/certificatePdf';
 import { IssueCertificateModal } from './IssueCertificateModal';
@@ -32,6 +33,7 @@ interface AdminPlantViewProps {
   clients: Client[];
   albaranes: Albaran[];
   certificates: Certificate[];
+  users: RCDUser[];
   onRefreshData: () => void;
 }
 
@@ -57,9 +59,10 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
   clients,
   albaranes,
   certificates,
+  users,
   onRefreshData,
 }) => {
-  const [adminTab, setAdminTab] = useState<'analytics' | 'albaranes' | 'clients' | 'certificates'>('analytics');
+  const [adminTab, setAdminTab] = useState<'analytics' | 'albaranes' | 'clients' | 'certificates' | 'users'>('analytics');
   const [selectedPhotoAlbaran, setSelectedPhotoAlbaran] = useState<Albaran | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -273,6 +276,14 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
               }`}
             >
               📜 Certificados ({certificates.length})
+            </button>
+            <button
+              onClick={() => setAdminTab('users')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                adminTab === 'users' ? 'bg-emerald-400 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              🔐 Usuarios BBDD ({users.length})
             </button>
           </div>
         </div>
@@ -570,6 +581,15 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
             ))}
           </div>
         </div>
+      )}
+
+      {/* TAB 5: USERS & SECURITY */}
+      {adminTab === 'users' && (
+        <UsersManagementView
+          users={users}
+          clients={clients}
+          onUsersChanged={onRefreshData}
+        />
       )}
 
       {/* Lightbox Modal */}
