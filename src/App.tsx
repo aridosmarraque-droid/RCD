@@ -3,16 +3,19 @@ import { Header, AppMode } from './components/Header';
 import { OperatorMobileView } from './components/OperatorMobileView';
 import { ClientPortalView } from './components/ClientPortalView';
 import { AdminPlantView } from './components/AdminPlantView';
+import { LoginView } from './components/LoginView';
 import { SettingsModal } from './components/SettingsModal';
 import { RCDService } from './services/rcdStorage';
 import { SupabaseService } from './services/supabaseClient';
-import { Client, Albaran, Certificate } from './types/rcd';
+import { Client, Albaran, Certificate, RCDUser } from './types/rcd';
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>('operator');
   const [clients, setClients] = useState<Client[]>([]);
   const [albaranes, setAlbaranes] = useState<Albaran[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
+  const [users, setUsers] = useState<RCDUser[]>([]);
+  const [currentUser, setCurrentUser] = useState<RCDUser | null>(() => RCDService.getCurrentUser());
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isSupabaseConfigured, setIsSupabaseConfigured] = useState<boolean>(false);
@@ -23,13 +26,36 @@ export default function App() {
     const loadedClients = await RCDService.loadClientsFromRemote();
     const loadedAlbaranes = await RCDService.loadAlbaranesFromRemote();
     const loadedCertificates = await RCDService.loadCertificatesFromRemote();
+    const loadedUsers = await RCDService.loadUsersFromRemote();
 
     setClients(loadedClients);
     setAlbaranes(loadedAlbaranes);
     setCertificates(loadedCertificates);
+    setUsers(loadedUsers);
 
-    if (loadedClients.length > 0 && (!selectedClientId || !loadedClients.find((c: Client) => c.id === selectedClientId))) {
-      setSelectedClientId(loadedClients[0].id);
+    // Sync current user state if saved
+    const savedUser = RCDService.getCurrentUser();
+    if (savedUser) {
+      setCurrentUser(savedUser);
+      applyUserSecurity(savedUser, loadedClients);
+    }
+  };
+
+  const applyUserSecurity = (user: RCDUser, currentClientsList: Client[]) => {
+    if (user.userType === 'empresa') {
+      setMode('client');
+      // Match client profile by clientCode or NIF/CIF
+      const matchingClient = currentClientsList.find(
+        (c) =>
+          (user.clientCode && c.code.toLowerCase() === user.clientCode.toLowerCase()) ||
+          (c.cif.toLowerCase() === user.nifCif.toLowerCase())
+      );
+
+      if (matchingClient) {
+        setSelectedClientId(matchingClient.id);
+      } else if (currentClientsList.length > 0) {
+        setSelectedClientId(currentClientsList[0].id);
+      }
     }
   };
 
@@ -37,7 +63,68 @@ export default function App() {
     loadData();
   }, []);
 
-  const activeClient = clients.find((c) => c.id === selectedClientId) || clients[0];
+  const handleLoginSuccess = (user: RCDUser) => {
+    setCurrentUser(user);
+    applyUserSecurity(user, clients);
+  };
+
+  const handleLogout = () => {
+    RCDService.logout();
+    setCurrentUser(null);
+    setMode('operator');
+  };
+
+  // Find active client for ClientPortalView
+  let activeClient = clients.find((c) => c.id === selectedClientId);
+
+  // If user is company and no matching client was found in DB, create virtual client profile
+  if (!activeClient && currentUser?.userType === 'empresa') {
+    activeClient = {
+      id: `client-${currentUser.id}`,
+      code: currentUser.clientCode || 'C-000',
+      name: currentUser.name,
+      cif: currentUser.nifCif,
+      email: '',
+      mobile: '',
+      notifyEmail: true,
+      notifyMobile: true,
+      createdAt: currentUser.createdAt,
+    };
+  } else if (!activeClient && clients.length > 0) {
+    activeClient = clients[0];
+  }
+
+  // Security Gate: If not logged in, render Login screen
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col antialiased selection:bg-emerald-500 selection:text-slate-950">
+        <Header
+          mode={mode}
+          setMode={setMode}
+          selectedClientId={selectedClientId}
+          setSelectedClientId={setSelectedClientId}
+          clientsList={clients.map((c) => ({ id: c.id, name: c.name, code: c.code }))}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          isSupabaseConfigured={isSupabaseConfigured}
+          currentUser={null}
+          onLogout={handleLogout}
+        />
+
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 flex items-center justify-center">
+          <LoginView
+            usersList={users}
+            onLoginSuccess={handleLoginSuccess}
+          />
+        </main>
+
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          onDataChanged={loadData}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col antialiased selection:bg-emerald-500 selection:text-slate-950">
@@ -51,6 +138,8 @@ export default function App() {
         clientsList={clients.map((c) => ({ id: c.id, name: c.name, code: c.code }))}
         onOpenSettings={() => setIsSettingsOpen(true)}
         isSupabaseConfigured={isSupabaseConfigured}
+        currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Area */}
@@ -93,6 +182,7 @@ export default function App() {
             clients={clients}
             albaranes={albaranes}
             certificates={certificates}
+            users={users}
             onRefreshData={loadData}
           />
         )}
