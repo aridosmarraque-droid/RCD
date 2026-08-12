@@ -1,4 +1,4 @@
-import { Albaran, Certificate, Client, WasteType } from '../types/rcd';
+import { Albaran, Certificate, Client, RCDUser, WasteType } from '../types/rcd';
 import { SupabaseService } from './supabaseClient';
 import { UltramsgService } from './ultramsgService';
 
@@ -66,12 +66,42 @@ const STORAGE_KEYS = {
   ALBARANES: 'rcd_app_albaranes_v3',
   CERTIFICATES: 'rcd_app_certificates_v3',
   WASTE_TYPES: 'rcd_app_waste_types_v3',
+  USERS: 'rcd_app_users_v3',
+  CURRENT_USER: 'rcd_app_current_user_v3',
 };
 
 // DEMO DATA CLEARED AS REQUESTED BY USER
 const INITIAL_CLIENTS: Client[] = [];
 const INITIAL_ALBARANES: Albaran[] = [];
 const INITIAL_CERTIFICATES: Certificate[] = [];
+
+const INITIAL_USERS: RCDUser[] = [
+  {
+    id: 'user-admin-01',
+    name: 'Dirección / Administración Planta',
+    nifCif: 'ADMIN',
+    code: '1234',
+    userType: 'admin',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'user-worker-01',
+    name: 'Carlos Gómez (Báscula)',
+    nifCif: '12345678A',
+    code: 'OPER123',
+    userType: 'trabajador',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'user-empresa-01',
+    name: 'Construcciones Marraque S.L.',
+    nifCif: 'B98765432',
+    code: 'C-00100',
+    userType: 'empresa',
+    clientCode: 'C-00100',
+    createdAt: new Date().toISOString(),
+  },
+];
 
 export class RCDService {
   // ===============================================
@@ -525,5 +555,111 @@ export class RCDService {
     localStorage.removeItem(STORAGE_KEYS.ALBARANES);
     localStorage.removeItem(STORAGE_KEYS.CERTIFICATES);
     localStorage.removeItem(STORAGE_KEYS.WASTE_TYPES);
+    localStorage.removeItem(STORAGE_KEYS.USERS);
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+  }
+
+  // ===============================================
+  // USER ACCOUNTS & SECURITY MANAGEMENT
+  // ===============================================
+
+  static getUsers(): RCDUser[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.USERS);
+      if (!data) {
+        this.saveUsersLocal(INITIAL_USERS);
+        return INITIAL_USERS;
+      }
+      const parsed = JSON.parse(data);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        this.saveUsersLocal(INITIAL_USERS);
+        return INITIAL_USERS;
+      }
+      return parsed;
+    } catch {
+      return INITIAL_USERS;
+    }
+  }
+
+  static saveUsersLocal(users: RCDUser[]): void {
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+  }
+
+  static async loadUsersFromRemote(): Promise<RCDUser[]> {
+    if (SupabaseService.isConfigured()) {
+      try {
+        const remoteUsers = await SupabaseService.fetchUsers();
+        if (remoteUsers && remoteUsers.length > 0) {
+          this.saveUsersLocal(remoteUsers);
+          return remoteUsers;
+        } else if (remoteUsers && remoteUsers.length === 0) {
+          // Push initial seed users to Supabase if empty
+          for (const u of INITIAL_USERS) {
+            await SupabaseService.upsertUser(u);
+          }
+          this.saveUsersLocal(INITIAL_USERS);
+          return INITIAL_USERS;
+        }
+      } catch (err) {
+        console.warn('Notice loading users from remote Supabase:', err);
+      }
+    }
+    return this.getUsers();
+  }
+
+  static async upsertUser(user: RCDUser): Promise<void> {
+    const current = this.getUsers();
+    const idx = current.findIndex((u) => u.id === user.id || u.nifCif.toUpperCase() === user.nifCif.toUpperCase());
+
+    if (idx >= 0) {
+      current[idx] = { ...current[idx], ...user };
+    } else {
+      current.push(user);
+    }
+
+    this.saveUsersLocal(current);
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        await SupabaseService.upsertUser(user);
+      } catch (err) {
+        console.warn('Notice syncing user upsert to Supabase:', err);
+      }
+    }
+  }
+
+  static async deleteUser(id: string): Promise<void> {
+    const current = this.getUsers().filter((u) => u.id !== id);
+    this.saveUsersLocal(current);
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        await SupabaseService.deleteUser(id);
+      } catch (err) {
+        console.warn('Notice syncing user deletion to Supabase:', err);
+      }
+    }
+  }
+
+  static getCurrentUser(): RCDUser | null {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+      if (!data) return null;
+      return JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  static setCurrentUser(user: RCDUser | null): void {
+    if (user) {
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    }
+  }
+
+  static logout(): void {
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
   }
 }
