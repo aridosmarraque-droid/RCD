@@ -128,13 +128,25 @@ CREATE TABLE IF NOT EXISTS public.rcd_certificates (
     rcd_created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS public.rcd_users (
+    rcd_id TEXT PRIMARY KEY,
+    rcd_name TEXT NOT NULL,
+    rcd_username_nif_cif TEXT NOT NULL UNIQUE,
+    rcd_code TEXT NOT NULL,
+    rcd_user_type TEXT NOT NULL,
+    rcd_client_code TEXT,
+    rcd_created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 ALTER TABLE public.rcd_clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rcd_albaranes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rcd_certificates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rcd_users ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Acceso rcd_clients" ON public.rcd_clients FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Acceso rcd_albaranes" ON public.rcd_albaranes FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Acceso rcd_certificates" ON public.rcd_certificates FOR ALL USING (true) WITH CHECK (true);`;
+CREATE POLICY "Acceso rcd_certificates" ON public.rcd_certificates FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH CHECK (true);`;
 
   const copySqlToClipboard = () => {
     navigator.clipboard.writeText(sqlDDLCode);
