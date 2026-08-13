@@ -34,26 +34,26 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-40 shadow-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center py-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center py-2.5 gap-3 min-h-[72px]">
           
           {/* Column 1: Logo & Plant Name (Left) */}
           <div className="flex items-center space-x-3 justify-center md:justify-start">
-            <div className="bg-emerald-500 p-2.5 rounded-xl shadow-lg shadow-emerald-500/20 text-slate-950 font-bold flex items-center justify-center shrink-0">
-              <Factory className="w-6 h-6" />
+            <div className="bg-emerald-500 p-2 rounded-xl shadow-lg shadow-emerald-500/20 text-slate-950 font-bold flex items-center justify-center shrink-0">
+              <Factory className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
-              <h1 className="font-bold text-base sm:text-lg text-white leading-tight">Planta RCD EcoMarraque</h1>
+              <h1 className="font-bold text-base sm:text-lg text-white leading-tight">Planta RCD</h1>
               <p className="text-xs text-slate-400">Gestión de Residuos de Construcción</p>
             </div>
           </div>
 
           {/* Column 2: Mode Switcher Buttons (Locked in Center) */}
           <div className="flex items-center justify-center">
-            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800/80 shadow-inner shrink-0">
+            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800/80 shadow-inner shrink-0 h-11">
               {(!isEmpresa || isAdmin) && (
                 <button
                   onClick={() => setMode('operator')}
-                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all h-full ${
                     mode === 'operator'
                       ? 'bg-emerald-500 text-slate-950 font-bold shadow-md'
                       : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
@@ -67,7 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
               {(isEmpresa || isAdmin) && (
                 <button
                   onClick={() => setMode('client')}
-                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all h-full ${
                     mode === 'client'
                       ? 'bg-sky-500 text-slate-950 font-bold shadow-md'
                       : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
@@ -81,7 +81,7 @@ export const Header: React.FC<HeaderProps> = ({
               {(!isEmpresa || isAdmin) && (
                 <button
                   onClick={() => setMode('admin')}
-                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all h-full ${
                     mode === 'admin'
                       ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
                       : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
@@ -95,11 +95,11 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Column 3: Controls & User Session Info (Right) */}
-          <div className="flex items-center space-x-2 justify-center md:justify-end">
+          <div className="flex items-center space-x-2 justify-center md:justify-end h-11">
             
             {/* Client selector (only if admin in client mode) */}
             {mode === 'client' && isAdmin && (
-              <div className="flex items-center space-x-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700">
+              <div className="flex items-center space-x-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700 h-full">
                 <Users className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                 <select
                   value={selectedClientId}
@@ -120,10 +120,10 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* Config BBDD Modal Button */}
-            {(isAdmin || !currentUser) && (
+            {isAdmin && (
               <button
                 onClick={onOpenSettings}
-                className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 transition relative shrink-0"
+                className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 transition relative shrink-0 h-full flex items-center justify-center"
                 title="Configuración de BBDD Supabase"
               >
                 <Settings className="w-4 h-4" />
@@ -135,7 +135,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* User Logged Info Badge & Logout */}
             {currentUser && (
-              <div className="flex items-center space-x-2 bg-slate-950 p-1.5 pl-3 rounded-xl border border-slate-800 shrink-0">
+              <div className="flex items-center space-x-2 bg-slate-950 p-1.5 pl-3 rounded-xl border border-slate-800 shrink-0 h-full">
                 <div className="text-right text-xs">
                   <div className="font-bold text-white flex items-center space-x-1 justify-end">
                     {isEmpresa ? (
@@ -154,10 +154,11 @@ export const Header: React.FC<HeaderProps> = ({
 
                 <button
                   onClick={onLogout}
-                  className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 rounded-lg border border-rose-500/20 transition shrink-0"
+                  className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 rounded-lg border border-rose-500/20 transition shrink-0 flex items-center justify-center space-x-1"
                   title="Cerrar Sesión"
                 >
                   <LogOut className="w-4 h-4" />
+                  <span className="text-[10px] font-bold hidden xl:inline">Salir</span>
                 </button>
               </div>
             )}
