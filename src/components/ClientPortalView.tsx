@@ -41,6 +41,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const [filterCertified, setFilterCertified] = useState<'all' | 'uncertified' | 'certified'>('all');
   const [selectedPhotoAlbaran, setSelectedPhotoAlbaran] = useState<Albaran | null>(null);
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+  const [createdCertNotice, setCreatedCertNotice] = useState<string | null>(null);
 
   // Sorting
   const [sortField, setSortField] = useState<ClientSortField>('date');
@@ -317,6 +318,23 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
         </div>
       )}
 
+      {/* Created Cert Notification Banner */}
+      {createdCertNotice && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-amber-200 text-xs flex items-start space-x-3 shadow-lg">
+          <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex-1 space-y-1">
+            <h4 className="font-bold text-amber-300 text-sm">Certificado Registrado - Pendiente de Firma</h4>
+            <p className="text-amber-200/90 leading-relaxed">{createdCertNotice}</p>
+          </div>
+          <button
+            onClick={() => setCreatedCertNotice(null)}
+            className="text-amber-400 hover:text-white p-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* TAB 2: ISSUED CERTIFICATES */}
       {activeTab === 'certificates' && (
         <div className="space-y-4">
@@ -333,9 +351,15 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                       <span className="font-mono font-bold text-sky-400 text-sm block">{cert.certificateNumber}</span>
                       <span className="text-[11px] text-slate-400">Fecha de Emisión: {cert.issueDate}</span>
                     </div>
-                    <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2.5 py-1 rounded-full border border-emerald-500/30">
-                      OFICIAL RCD
-                    </span>
+                    {cert.status === 'Pendiente de Firma' || !cert.signedAt ? (
+                      <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2.5 py-1 rounded-full border border-amber-500/30 flex items-center space-x-1">
+                        <span>⏳ Pendiente de Firma Digital</span>
+                      </span>
+                    ) : (
+                      <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2.5 py-1 rounded-full border border-emerald-500/30 flex items-center space-x-1">
+                        <span>✓ Firmado Digitalmente</span>
+                      </span>
+                    )}
                   </div>
 
                   <div className="space-y-2 text-xs">
@@ -356,6 +380,19 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                         <span className="font-extrabold text-emerald-400 text-base">{cert.totalTons.toFixed(2)} t</span>
                       </div>
                     </div>
+
+                    {cert.status === 'Pendiente de Firma' || !cert.signedAt ? (
+                      <div className="bg-amber-950/40 border border-amber-800/60 p-2.5 rounded-xl text-[11px] text-amber-300 flex items-start space-x-2">
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <span>
+                          El certificado estará disponible firmado digitalmente en breve. Se ha avisado al responsable para su firma.
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-[11px] text-slate-400">
+                        Firmado por: <strong className="text-slate-200">{cert.signerName}</strong> ({cert.signedAt})
+                      </div>
+                    )}
                   </div>
 
                   {/* Print PDF Button */}
@@ -364,7 +401,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition"
                   >
                     <Printer className="w-4 h-4" />
-                    <span>Ver / Imprimir Documento Certificado PDF</span>
+                    <span>Ver Documento Certificado PDF</span>
                   </button>
                 </div>
               ))
@@ -385,7 +422,13 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
         onClose={() => setIsIssueModalOpen(false)}
         client={client}
         availableAlbaranes={availableUncertified}
-        onCertificateCreated={() => onRefreshData()}
+        onCertificateCreated={(newCert) => {
+          setCreatedCertNotice(
+            `El certificado ${newCert.certificateNumber} estará disponible con firma digital en breve. Se ha notificado al responsable mediante correo electrónico.`
+          );
+          setActiveTab('certificates');
+          onRefreshData();
+        }}
       />
 
     </div>
