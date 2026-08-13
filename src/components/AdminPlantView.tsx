@@ -27,6 +27,7 @@ import { PhotoLightboxModal } from './PhotoLightboxModal';
 import { openPrintableCertificate } from '../utils/certificatePdf';
 import { IssueCertificateModal } from './IssueCertificateModal';
 import { WasteTypesConfigModal } from './WasteTypesConfigModal';
+import { SignCertificateModal } from './SignCertificateModal';
 import { RCDService } from '../services/rcdStorage';
 
 interface AdminPlantViewProps {
@@ -64,6 +65,10 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
 }) => {
   const [adminTab, setAdminTab] = useState<'analytics' | 'albaranes' | 'clients' | 'certificates' | 'users'>('analytics');
   const [selectedPhotoAlbaran, setSelectedPhotoAlbaran] = useState<Albaran | null>(null);
+  const [selectedClientForCert, setSelectedClientForCert] = useState<Client | null>(null);
+  const [showWasteTypesModal, setShowWasteTypesModal] = useState(false);
+  const [selectedCertToSign, setSelectedCertToSign] = useState<Certificate | null>(null);
+  const [certFilterStatus, setCertFilterStatus] = useState<'all' | 'pending' | 'signed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
   // Sorting state for Albaranes
@@ -271,11 +276,16 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
             </button>
             <button
               onClick={() => setAdminTab('certificates')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 ${
                 adminTab === 'certificates' ? 'bg-purple-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
               }`}
             >
-              📜 Certificados ({certificates.length})
+              <span>📜 Certificados ({certificates.length})</span>
+              {certificates.filter((c) => c.status === 'Pendiente de Firma' || !c.signedAt).length > 0 && (
+                <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-1.5 py-0.5 rounded-full animate-pulse">
+                  {certificates.filter((c) => c.status === 'Pendiente de Firma' || !c.signedAt).length} pendientes
+                </span>
+              )}
             </button>
             <button
               onClick={() => setAdminTab('users')}
@@ -553,32 +563,104 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
       {/* TAB 4: CERTIFICATES MANAGEMENT */}
       {adminTab === 'certificates' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {certificates.map((cert) => (
-              <div key={cert.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <span className="font-mono font-bold text-sky-400 text-sm">{cert.certificateNumber}</span>
-                  <span className="text-slate-400 text-xs">Fecha: {cert.issueDate}</span>
-                </div>
+          {/* Certificate Filter Tabs */}
+          <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center space-x-2 text-white text-xs font-bold">
+              <FileText className="w-4 h-4 text-purple-400" />
+              <span>Gestión de Certificados de Valorización y Firmas Digitales:</span>
+            </div>
 
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs space-y-1">
-                  <span className="text-slate-500 block text-[10px] uppercase font-bold">Promotor Beneficiario:</span>
-                  <div className="font-bold text-white text-sm">{cert.thirdPartyName}</div>
-                  <div className="text-slate-400">CIF: {cert.thirdPartyCif} | Obra: {cert.constructionSiteName}</div>
-                  <div className="text-emerald-400 font-bold pt-1">
-                    Total Certificado: {cert.totalTons.toFixed(2)} Toneladas ({cert.albaranIds.length} albaranes)
+            <div className="flex items-center space-x-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
+              <button
+                onClick={() => setCertFilterStatus('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  certFilterStatus === 'all' ? 'bg-purple-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Todos ({certificates.length})
+              </button>
+              <button
+                onClick={() => setCertFilterStatus('pending')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1 ${
+                  certFilterStatus === 'pending' ? 'bg-amber-500 text-slate-950 shadow' : 'text-amber-400 hover:text-amber-300'
+                }`}
+              >
+                <span>⏳ Pendientes de Firma</span>
+                <span className="bg-amber-950/80 text-amber-300 px-1.5 py-0.2 rounded-full text-[10px]">
+                  {certificates.filter((c) => c.status === 'Pendiente de Firma' || !c.signedAt).length}
+                </span>
+              </button>
+              <button
+                onClick={() => setCertFilterStatus('signed')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  certFilterStatus === 'signed' ? 'bg-emerald-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                ✓ Firmados ({certificates.filter((c) => c.status === 'Emitido' && c.signedAt).length})
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {certificates
+              .filter((cert) => {
+                if (certFilterStatus === 'pending') return cert.status === 'Pendiente de Firma' || !cert.signedAt;
+                if (certFilterStatus === 'signed') return cert.status === 'Emitido' && cert.signedAt;
+                return true;
+              })
+              .map((cert) => (
+                <div key={cert.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="font-mono font-bold text-sky-400 text-sm">{cert.certificateNumber}</span>
+                    {cert.status === 'Pendiente de Firma' || !cert.signedAt ? (
+                      <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold px-2.5 py-1 rounded-full">
+                        ⏳ Pendiente de Firma
+                      </span>
+                    ) : (
+                      <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold px-2.5 py-1 rounded-full">
+                        ✓ Firmado Digitalmente
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs space-y-1">
+                    <div className="text-slate-400">Cliente Solicitante: <strong className="text-white">{cert.clientName}</strong> ({cert.clientCif})</div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold pt-1">Promotor Beneficiario:</span>
+                    <div className="font-bold text-white text-sm">{cert.thirdPartyName}</div>
+                    <div className="text-slate-400">CIF: {cert.thirdPartyCif} | Obra: {cert.constructionSiteName}</div>
+                    <div className="text-emerald-400 font-bold pt-1">
+                      Total Certificado: {cert.totalTons.toFixed(2)} Toneladas ({cert.albaranIds.length} albaranes)
+                    </div>
+                    {cert.signedAt && (
+                      <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 mt-2">
+                        Firmado por: <strong className="text-slate-200">{cert.signerName}</strong> ({cert.signedAt})
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {cert.status === 'Pendiente de Firma' || !cert.signedAt ? (
+                      <button
+                        onClick={() => setSelectedCertToSign(cert)}
+                        className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition"
+                      >
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>✍️ Firmar Digitalmente</span>
+                      </button>
+                    ) : null}
+
+                    <button
+                      onClick={() => openPrintableCertificate(cert)}
+                      className={`w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-2 transition ${
+                        cert.status === 'Pendiente de Firma' || !cert.signedAt ? '' : 'col-span-2'
+                      }`}
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>Imprimir / Ver PDF</span>
+                    </button>
                   </div>
                 </div>
-
-                <button
-                  onClick={() => openPrintableCertificate(cert)}
-                  className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 rounded-xl text-xs shadow flex items-center justify-center space-x-2 transition"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>Imprimir / Ver Certificado PDF</span>
-                </button>
-              </div>
-            ))}
+              ))}
           </div>
         </div>
       )}
@@ -596,6 +678,17 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
       <PhotoLightboxModal
         albaran={selectedPhotoAlbaran}
         onClose={() => setSelectedPhotoAlbaran(null)}
+      />
+
+      {/* Sign Certificate Modal */}
+      <SignCertificateModal
+        isOpen={!!selectedCertToSign}
+        onClose={() => setSelectedCertToSign(null)}
+        certificate={selectedCertToSign}
+        onSignedSuccess={() => {
+          onRefreshData();
+          setSelectedCertToSign(null);
+        }}
       />
 
       {/* Modal if selected client for cert */}
