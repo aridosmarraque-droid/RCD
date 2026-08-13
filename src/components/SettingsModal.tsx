@@ -30,6 +30,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [emailWebhookUrl, setEmailWebhookUrl] = useState('');
   const [emailApiKey, setEmailApiKey] = useState('');
   const [emailFromAddress, setEmailFromAddress] = useState('');
+  const [emailSignerAddress, setEmailSignerAddress] = useState('');
   const [emailSaved, setEmailSaved] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState('');
   const [testEmailStatus, setTestEmailStatus] = useState<{ loading: boolean; message?: string; success?: boolean }>({ loading: false });
@@ -48,6 +49,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       setEmailWebhookUrl(emailConfig.webhookUrl);
       setEmailApiKey(emailConfig.apiKey);
       setEmailFromAddress(emailConfig.fromAddress);
+      setEmailSignerAddress(emailConfig.signerAddress);
     }
   }, [isOpen]);
 
@@ -70,7 +72,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
 
   const handleSaveEmail = (e: React.FormEvent) => {
     e.preventDefault();
-    EmailService.saveConfig(emailWebhookUrl, emailApiKey, emailFromAddress);
+    EmailService.saveConfig(emailWebhookUrl, emailApiKey, emailFromAddress, emailSignerAddress);
     setEmailSaved(true);
     setTimeout(() => setEmailSaved(false), 3000);
   };
@@ -486,6 +488,22 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
                     onChange={(e) => setEmailFromAddress(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Correo del Responsable de Firma de Certificados (Aviso de firma pendiente)
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="direccion@plantarcd.es"
+                    value={emailSignerAddress}
+                    onChange={(e) => setEmailSignerAddress(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                  <p className="text-[11px] text-amber-400 mt-1">
+                     Recibirá un correo automático cada vez que un cliente solicite un certificado desde el portal para proceder a su firma digital.
+                  </p>
                 </div>
 
                 <div>
