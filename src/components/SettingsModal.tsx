@@ -580,4 +580,3 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
     </div>
   );
 };
-
