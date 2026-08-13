@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Database, MessageSquare, Check, Copy, AlertTriangle, Save, Send, Sparkles, Server } from 'lucide-react';
+import { X, Database, MessageSquare, Check, Copy, AlertTriangle, Save, Send, Sparkles, Server, Mail } from 'lucide-react';
 import { SupabaseService } from '../services/supabaseClient';
 import { UltramsgService } from '../services/ultramsgService';
+import { EmailService } from '../services/emailService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -10,7 +11,7 @@ interface SettingsModalProps {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onDataChanged }) => {
-  const [activeTab, setActiveTab] = useState<'supabase' | 'ultramsg'>('supabase');
+  const [activeTab, setActiveTab] = useState<'supabase' | 'ultramsg' | 'email'>('supabase');
 
   // Supabase state
   const [supabaseUrl, setSupabaseUrl] = useState('');
@@ -25,6 +26,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [testPhone, setTestPhone] = useState('');
   const [testStatus, setTestStatus] = useState<{ loading: boolean; message?: string; success?: boolean }>({ loading: false });
 
+  // Email Service state
+  const [emailWebhookUrl, setEmailWebhookUrl] = useState('');
+  const [emailApiKey, setEmailApiKey] = useState('');
+  const [emailFromAddress, setEmailFromAddress] = useState('');
+  const [emailSaved, setEmailSaved] = useState(false);
+  const [testEmailAddress, setTestEmailAddress] = useState('');
+  const [testEmailStatus, setTestEmailStatus] = useState<{ loading: boolean; message?: string; success?: boolean }>({ loading: false });
+
   useEffect(() => {
     if (isOpen) {
       const supCreds = SupabaseService.getCredentials();
@@ -34,6 +43,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       const ultraConfig = UltramsgService.getConfig();
       setInstanceId(ultraConfig.instanceId);
       setToken(ultraConfig.token);
+
+      const emailConfig = EmailService.getConfig();
+      setEmailWebhookUrl(emailConfig.webhookUrl);
+      setEmailApiKey(emailConfig.apiKey);
+      setEmailFromAddress(emailConfig.fromAddress);
     }
   }, [isOpen]);
 
@@ -54,17 +68,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     setTimeout(() => setUltramsgSaved(false), 3000);
   };
 
+  const handleSaveEmail = (e: React.FormEvent) => {
+    e.preventDefault();
+    EmailService.saveConfig(emailWebhookUrl, emailApiKey, emailFromAddress);
+    setEmailSaved(true);
+    setTimeout(() => setEmailSaved(false), 3000);
+  };
+
   const handleSendTestWhatsApp = async () => {
     if (!testPhone) return;
     setTestStatus({ loading: true });
     const res = await UltramsgService.sendWhatsApp(
       testPhone,
-      '🧪 *Planta RCD EcoMarraque*\n\nPrueba de integración con Ultramsg completada con éxito. ¡Los avisos de descarga RCD y certificados están listos!'
+      '🧪 *Planta de Residuos RCD*\n\nPrueba de integración con Ultramsg completada con éxito. ¡Los avisos de descarga RCD y certificados están listos!'
     );
     if (res.success) {
       setTestStatus({ loading: false, success: true, message: '¡WhatsApp de prueba enviado correctamente!' });
     } else {
       setTestStatus({ loading: false, success: false, message: `Error: ${res.error}` });
+    }
+  };
+
+  const handleSendTestEmail = async () => {
+    if (!testEmailAddress) return;
+    setTestEmailStatus({ loading: true });
+    const res = await EmailService.sendEmail({
+      to: testEmailAddress,
+      subject: '🧪 [Planta RCD] Prueba de Notificación por Correo Electrónico',
+      textBody: 'Prueba de integración con el servicio de Correo Electrónico RCD completada con éxito.',
+      htmlBody: '<h3>🧪 Planta de Residuos RCD</h3><p>Prueba de integración con el servicio de Correo Electrónico RCD completada con éxito. ¡Las notificaciones automáticas de albaranes están listas!</p>',
+    });
+    if (res.success) {
+      setTestEmailStatus({ loading: false, success: true, message: `¡Notificación de correo enviada a ${testEmailAddress}!` });
+    } else {
+      setTestEmailStatus({ loading: false, success: false, message: `Error: ${res.error}` });
     }
   };
 
@@ -198,6 +235,18 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
           >
             <MessageSquare className="w-4 h-4" />
             <span>2. WhatsApp Ultramsg</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('email')}
+            className={`flex items-center space-x-2 px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition ${
+              activeTab === 'email'
+                ? 'border-emerald-500 text-emerald-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Mail className="w-4 h-4" />
+            <span>3. Correo Electrónico</span>
           </button>
         </div>
 
@@ -404,6 +453,117 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
             </div>
           )}
 
+          {/* TAB 3: EMAIL */}
+          {activeTab === 'email' && (
+            <div className="space-y-6">
+
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-xs text-emerald-300 space-y-2">
+                <div className="flex items-center space-x-2 font-bold text-sm text-emerald-400">
+                  <Mail className="w-4 h-4" />
+                  <span>Notificaciones de Albarán por Correo Electrónico</span>
+                </div>
+                <p>
+                  Cada vez que un operario registra una entrada de vehículo en planta, el sistema envía una notificación automática por correo electrónico al cliente (si la opción de Email está activada en su ficha de cliente y tiene registrado su correo).
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveEmail} className="bg-slate-950 p-4 border border-slate-800 rounded-xl space-y-4">
+                <h3 className="text-sm font-bold text-white flex items-center justify-between">
+                  <span>Configuración del Servicio de Correo</span>
+                  <span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                    ● Servicio Activo
+                  </span>
+                </h3>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Correo Emisor de la Planta (From)
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="notificaciones@plantarcd.es"
+                    value={emailFromAddress}
+                    onChange={(e) => setEmailFromAddress(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    URL Webhook / API Servidor Correo (Opcional)
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://api.resend.com/emails o webhook de la empresa"
+                    value={emailWebhookUrl}
+                    onChange={(e) => setEmailWebhookUrl(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Clave de API / Token de Autenticación (Opcional)
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="re_123456789"
+                    value={emailApiKey}
+                    onChange={(e) => setEmailApiKey(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="submit"
+                    className="flex items-center space-x-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs transition"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Guardar Configuración de Correo</span>
+                  </button>
+
+                  {emailSaved && (
+                    <span className="text-xs text-emerald-400 font-bold flex items-center space-x-1">
+                      <Check className="w-4 h-4" />
+                      <span>¡Configuración de correo guardada!</span>
+                    </span>
+                  )}
+                </div>
+              </form>
+
+              {/* Test Email Box */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Probar Envío de Correo Electrónico</h4>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    placeholder="cliente@ejemplo.com"
+                    value={testEmailAddress}
+                    onChange={(e) => setTestEmailAddress(e.target.value)}
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    disabled={testEmailStatus.loading || !testEmailAddress}
+                    onClick={handleSendTestEmail}
+                    className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold px-4 py-2 rounded-lg text-xs transition border border-slate-700 disabled:opacity-50"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{testEmailStatus.loading ? 'Enviando...' : 'Probar Envío Email'}</span>
+                  </button>
+                </div>
+
+                {testEmailStatus.message && (
+                  <p className={`text-xs font-medium mt-1 ${testEmailStatus.success ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {testEmailStatus.message}
+                  </p>
+                )}
+              </div>
+
+            </div>
+          )}
+
         </div>
 
         {/* Footer */}
@@ -420,3 +580,4 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
     </div>
   );
 };
+
