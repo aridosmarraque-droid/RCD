@@ -15,7 +15,7 @@ export default function App() {
   const [albaranes, setAlbaranes] = useState<Albaran[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [users, setUsers] = useState<RCDUser[]>([]);
-  const [currentUser, setCurrentUser] = useState<RCDUser | null>(() => RCDService.getCurrentUser());
+  const [currentUser, setCurrentUser] = useState<RCDUser | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isSupabaseConfigured, setIsSupabaseConfigured] = useState<boolean>(false);
@@ -27,17 +27,16 @@ export default function App() {
     const loadedAlbaranes = await RCDService.loadAlbaranesFromRemote();
     const loadedCertificates = await RCDService.loadCertificatesFromRemote();
     const loadedUsers = await RCDService.loadUsersFromRemote();
+    await RCDService.loadWasteTypesFromRemote();
 
     setClients(loadedClients);
     setAlbaranes(loadedAlbaranes);
     setCertificates(loadedCertificates);
     setUsers(loadedUsers);
 
-    // Sync current user state if saved
-    const savedUser = RCDService.getCurrentUser();
-    if (savedUser) {
-      setCurrentUser(savedUser);
-      applyUserSecurity(savedUser, loadedClients);
+    // If a user is already logged in in current React state, re-apply security rules
+    if (currentUser) {
+      applyUserSecurity(currentUser, loadedClients);
     }
   };
 
@@ -207,7 +206,7 @@ export default function App() {
       <footer className="bg-slate-900 border-t border-slate-800 py-4 px-4 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <div>
-            <strong>Planta de Residuos RCD EcoMarraque S.L.</strong> — Conexión BBDD Supabase & Ultramsg WhatsApp
+            <strong>Planta de Residuos RCD</strong> — Conexión BBDD Supabase & Ultramsg WhatsApp
           </div>
           <div className="text-[11px] text-slate-600">
             Conforme a Ley 7/2022 de Residuos y RD 105/2008 RCD
@@ -218,3 +217,4 @@ export default function App() {
     </div>
   );
 }
+
