@@ -715,4 +715,3 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
     </div>
   );
 };
-
