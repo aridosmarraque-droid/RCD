@@ -481,7 +481,7 @@ export class RCDService {
       totalTons: Number(totalTons.toFixed(2)),
       issuerName: payload.issuerName || 'Administrador Planta RCD',
       verificationCode: `VERIF-2026-RCD-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-      status: 'Emitido',
+      status: 'Pendiente de Firma',
     };
 
     // LOCK the albaranes in local state
@@ -527,19 +527,80 @@ export class RCDService {
       }
 
       if (client.notifyEmail && client.email) {
-        const certSubject = `[Planta RCD] Emitido Certificado de Valorización Nº ${newCertificate.certificateNumber}`;
-        const certText = `Estimado cliente ${client.name},\n\nSe ha emitido un nuevo Certificado de Valorización de RCD:\n\n• Nº Certificado: ${newCertificate.certificateNumber}\n• Obra / Promotor: ${newCertificate.constructionSiteName}\n• Total Certificado: ${newCertificate.totalTons} Toneladas\n• Código Verificación: ${newCertificate.verificationCode}\n\nPuede descargar su certificado desde el Portal del Cliente.`;
+        const certSubject = `[Planta RCD] Solicitud de Certificado Registrada Nº ${newCertificate.certificateNumber}`;
+        const certText = `Estimado cliente ${client.name},\n\nSe ha registrado su solicitud de Certificado de Valorización de RCD:\n\n• Nº Certificado: ${newCertificate.certificateNumber}\n• Obra / Promotor: ${newCertificate.constructionSiteName}\n• Total Certificado: ${newCertificate.totalTons} Toneladas\n• Código Verificación: ${newCertificate.verificationCode}\n\nEl certificado estará disponible firmado digitalmente en breve. Se ha notificado al responsable de la empresa.`;
         
         await EmailService.sendEmail({
           to: client.email,
           subject: certSubject,
           textBody: certText,
-          htmlBody: `<div style="font-family:sans-serif; background:#0f172a; color:#f8fafc; padding:20px; border-radius:12px;"><h2>📜 Planta de Residuos RCD</h2><p>Estimado cliente <strong>${client.name}</strong>,</p><p>Se ha emitido un nuevo Certificado de Valorización de RCD:</p><ul><li><strong>Nº Certificado:</strong> ${newCertificate.certificateNumber}</li><li><strong>Obra / Promotor:</strong> ${newCertificate.constructionSiteName}</li><li><strong>Total Certificado:</strong> ${newCertificate.totalTons} Toneladas</li><li><strong>Código Verificación:</strong> ${newCertificate.verificationCode}</li></ul><p>Disponible en su Portal de Cliente.</p></div>`,
+          htmlBody: `<div style="font-family:sans-serif; background:#0f172a; color:#f8fafc; padding:20px; border-radius:12px;"><h2>📜 Planta de Residuos RCD</h2><p>Estimado cliente <strong>${client.name}</strong>,</p><p>Se ha registrado la solicitud del Certificado de Valorización de RCD:</p><ul><li><strong>Nº Certificado:</strong> ${newCertificate.certificateNumber}</li><li><strong>Obra / Promotor:</strong> ${newCertificate.constructionSiteName}</li><li><strong>Total Certificado:</strong> ${newCertificate.totalTons} Toneladas</li><li><strong>Estado:</strong> ⏳ Pendiente de Firma Digital</li></ul><p style="color:#f59e0b;">El certificado estará disponible con firma digital en breve. Se ha avisado al responsable de planta.</p></div>`,
         });
       }
     }
 
+    // Notify manager for pending signature
+    await EmailService.sendPendingSignatureEmail({
+      certificateNumber: newCertificate.certificateNumber,
+      clientName: newCertificate.clientName,
+      thirdPartyName: newCertificate.thirdPartyName,
+      constructionSiteName: newCertificate.constructionSiteName,
+      totalTons: newCertificate.totalTons,
+      issueDate: newCertificate.issueDate,
+    });
+
     return newCertificate;
+  }
+
+  static async signCertificate(
+    certId: string,
+    signatureData: string,
+    signerName: string,
+    signerNif: string
+  ): Promise<Certificate> {
+    const certs = this.getCertificates();
+    const certIndex = certs.findIndex((c) => c.id === certId);
+    if (certIndex === -1) {
+      throw new Error('Certificado no encontrado');
+    }
+
+    const now = new Date();
+    const signedDateStr = `${now.toLocaleDateString('es-ES')} ${now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} (UTC+1)`;
+
+    const updatedCert: Certificate = {
+      ...certs[certIndex],
+      status: 'Emitido',
+      signatureData,
+      signerName: signerName.trim() || 'Director Técnico Planta RCD',
+      signerNif: signerNif.trim() || 'B-91029384',
+      signedAt: signedDateStr,
+    };
+
+    certs[certIndex] = updatedCert;
+    this.saveCertificatesLocal(certs);
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        await SupabaseService.insertCertificate(updatedCert);
+      } catch (err) {
+        console.warn('Notice updating signed certificate in Supabase:', err);
+      }
+    }
+
+    // Send notification email to client that the certificate is signed and available
+    const client = this.getClientById(updatedCert.clientId);
+    const clientEmail = client?.email || `${updatedCert.clientName.toLowerCase().replace(/[^a-z0-9]/g, '')}@empresa.es`;
+    
+    await EmailService.sendSignedCertificateEmail(clientEmail, {
+      certificateNumber: updatedCert.certificateNumber,
+      clientName: updatedCert.clientName,
+      thirdPartyName: updatedCert.thirdPartyName,
+      totalTons: updatedCert.totalTons,
+      signedAt: updatedCert.signedAt,
+      signerName: updatedCert.signerName,
+    });
+
+    return updatedCert;
   }
 
   // ===============================================
