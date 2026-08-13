@@ -54,6 +54,10 @@ export default function App() {
       if (matchingClient) {
         setSelectedClientId(matchingClient.id);
       }
+    } else if (user.userType === 'trabajador') {
+      setMode('operator');
+    } else if (user.userType === 'admin') {
+      setMode('admin');
     }
   };
 
@@ -185,13 +189,29 @@ export default function App() {
         )}
 
         {mode === 'admin' && (
-          <AdminPlantView
-            clients={clients}
-            albaranes={albaranes}
-            certificates={certificates}
-            users={users}
-            onRefreshData={loadData}
-          />
+          currentUser?.userType === 'admin' ? (
+            <AdminPlantView
+              clients={clients}
+              albaranes={albaranes}
+              certificates={certificates}
+              users={users}
+              onRefreshData={loadData}
+            />
+          ) : (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center max-w-lg mx-auto my-12 space-y-4">
+              <div className="text-4xl">🔒</div>
+              <h3 className="text-lg font-bold text-white">Acceso Restringido</h3>
+              <p className="text-xs text-slate-400">
+                El usuario tipo Trabajador Báscula no dispone de permisos de acceso al Panel Administrador.
+              </p>
+              <button
+                onClick={() => setMode('operator')}
+                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs transition"
+              >
+                Ir a Entrada Báscula
+              </button>
+            </div>
+          )
         )}
       </main>
 
