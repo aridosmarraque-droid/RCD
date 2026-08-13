@@ -322,7 +322,7 @@ export class RCDService {
 
     // Attempt WhatsApp notification via Ultramsg if client has mobile notification enabled
     if (client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
-      const messageText = `🏭 *Planta RCD EcoMarraque*\n\nEstimado cliente *${client.name}*,\n\nSe ha registrado en planta un nuevo albarán de entrega:\n📜 *Nº Albarán:* ${created.numAlbaran}\n📦 *Residuo:* ${created.wasteTypeName} (${created.wasteTypeCode})\n⚖️ *Peso Neto:* ${created.quantityTons} toneladas\n🚚 *Matrícula:* ${created.licensePlate}\n📍 *Zona:* ${created.plantZone}\n📅 *Fecha/Hora:* ${created.date} ${created.time}\n\nGracias por su compromiso con la gestión sostenible de RCD.`;
+      const messageText = `🏭 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha registrado en planta un nuevo albarán de entrega:\n📜 *Nº Albarán:* ${created.numAlbaran}\n📦 *Residuo:* ${created.wasteTypeName} (${created.wasteTypeCode})\n⚖️ *Peso Neto:* ${created.quantityTons} toneladas\n🚚 *Matrícula:* ${created.licensePlate}\n📍 *Zona:* ${created.plantZone}\n📅 *Fecha/Hora:* ${created.date} ${created.time}\n\nGracias por su compromiso con la gestión sostenible de RCD.`;
 
       const sendResult = await UltramsgService.sendWhatsApp(client.mobile, messageText);
       if (sendResult.success) {
@@ -506,7 +506,7 @@ export class RCDService {
     // Send WhatsApp via Ultramsg if client has mobile number
     const client = this.getClientById(payload.clientId);
     if (client && client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
-      const msg = `📜 *Planta RCD EcoMarraque*\n\nEstimado cliente *${client.name}*,\n\nSe ha emitido un nuevo *Certificado de Valorización de RCD*:\n\n📑 *Nº Certificado:* ${newCertificate.certificateNumber}\n🏗️ *Obra / Promotor:* ${newCertificate.constructionSiteName}\n⚖️ *Total Certificado:* ${newCertificate.totalTons} toneladas\n🔐 *Código Verificación:* ${newCertificate.verificationCode}\n\nPuede consultar e descargar su certificado desde el Portal del Cliente.`;
+      const msg = `📜 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha emitido un nuevo *Certificado de Valorización de RCD*:\n\n📑 *Nº Certificado:* ${newCertificate.certificateNumber}\n🏗️ *Obra / Promotor:* ${newCertificate.constructionSiteName}\n⚖️ *Total Certificado:* ${newCertificate.totalTons} toneladas\n🔐 *Código Verificación:* ${newCertificate.verificationCode}\n\nPuede consultar e descargar su certificado desde el Portal del Cliente.`;
 
       await UltramsgService.sendWhatsApp(client.mobile, msg);
     }
@@ -517,21 +517,40 @@ export class RCDService {
   // ===============================================
   // WASTE TYPES MANAGEMENT
   // ===============================================
+  static async loadWasteTypesFromRemote(): Promise<WasteType[]> {
+    const remote = await SupabaseService.fetchWasteTypes();
+    if (remote && remote.length > 0) {
+      this.saveWasteTypesLocal(remote);
+      return remote;
+    }
+    return this.getWasteTypes();
+  }
+
   static getWasteTypes(): WasteType[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.WASTE_TYPES);
       if (!data) {
-        this.saveWasteTypes(OFFICIAL_WASTE_TYPES);
+        this.saveWasteTypesLocal(OFFICIAL_WASTE_TYPES);
         return OFFICIAL_WASTE_TYPES;
       }
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        this.saveWasteTypesLocal(OFFICIAL_WASTE_TYPES);
+        return OFFICIAL_WASTE_TYPES;
+      }
+      return parsed;
     } catch {
       return OFFICIAL_WASTE_TYPES;
     }
   }
 
-  static saveWasteTypes(types: WasteType[]): void {
+  static saveWasteTypesLocal(types: WasteType[]): void {
     localStorage.setItem(STORAGE_KEYS.WASTE_TYPES, JSON.stringify(types));
+  }
+
+  static saveWasteTypes(types: WasteType[]): void {
+    this.saveWasteTypesLocal(types);
+    SupabaseService.upsertWasteTypes(types);
   }
 
   static addOrUpdateWasteType(wasteType: WasteType): void {
@@ -547,7 +566,8 @@ export class RCDService {
 
   static deleteWasteType(code: string): void {
     const filtered = this.getWasteTypes().filter((w) => w.code.trim() !== code.trim());
-    this.saveWasteTypes(filtered);
+    this.saveWasteTypesLocal(filtered);
+    SupabaseService.deleteWasteType(code);
   }
 
   static clearAllData(): void {
