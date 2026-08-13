@@ -1,4 +1,4 @@
-import { Certificate } from '@/types/rcd';
+import { Certificate } from '../types/rcd';
 
 /**
  * Generates an official printable Certificate document HTML / Print View
@@ -157,9 +157,9 @@ export function openPrintableCertificate(certificate: Certificate): void {
 
       <div class="header">
         <div>
-          <div class="title">PLANTA DE VALORIZACIÓN Y RECICLAJE RCD ECO-MARRAQUE</div>
+          <div class="title">PLANTA DE VALORIZACIÓN Y RECICLAJE RCD</div>
           <div class="subtitle">Gestor Autorizado de Residuos RCD-SE/2024-00912 | NIF: B-91029384</div>
-          <div class="subtitle">Ctra. Isla Mayor km 4.5, 41080 Sevilla | Email: certificados@ecomarraque.es</div>
+          <div class="subtitle">Ctra. Isla Mayor km 4.5, 41080 Sevilla | Email: certificados@plantarcd.es</div>
         </div>
         <div class="cert-num">${certificate.certificateNumber}</div>
       </div>
