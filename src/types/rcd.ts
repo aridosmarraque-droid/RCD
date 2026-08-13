@@ -74,7 +74,11 @@ export interface Certificate {
   totalTons: number;
   issuerName: string; // Admin / App user
   verificationCode: string;
-  status: 'Emitido' | 'Anulado';
+  status: 'Pendiente de Firma' | 'Emitido' | 'Anulado';
+  signatureData?: string; // Base64 signature image or digital seal
+  signedAt?: string; // Date string or ISO timestamp when signed
+  signerName?: string; // Name of person who signed
+  signerNif?: string; // NIF of person who signed
 }
 
 export interface RCDUser {
