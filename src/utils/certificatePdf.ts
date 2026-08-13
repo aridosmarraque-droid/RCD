@@ -277,4 +277,3 @@ export function openPrintableCertificate(certificate: Certificate): void {
   printWindow.document.write(htmlContent);
   printWindow.document.close();
 }
-
