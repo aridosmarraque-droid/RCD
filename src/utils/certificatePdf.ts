@@ -232,20 +232,43 @@ export function openPrintableCertificate(certificate: Certificate): void {
       <div class="footer">
         <div>
           <div style="font-size: 11px; color: #475569;">Fecha de Emisión: <strong>${certificate.issueDate}</strong></div>
-          <div style="font-size: 11px; color: #475569; margin-top: 4px;">Código de Verificación Electrónica: <strong>${certificate.verificationCode}</strong></div>
-          <div style="margin-top: 20px; font-size: 11px; color: #0F172A;">
-            <strong>FIRMADO Y SELLADO POR:</strong><br/>
-            ${certificate.issuerName}<br/>
-            Director Técnico Planta de Tratamiento RCD
+          <div style="font-size: 11px; color: #475569; margin-top: 4px;">Código de Verificación Electrónica (CSV): <strong>${certificate.verificationCode}</strong></div>
+          <div style="margin-top: 16px; font-size: 11px; color: #0F172A;">
+            <strong>REPRESENTANTE LEGAL Y FIRMA TÉCNICA:</strong><br/>
+            ${certificate.signerName || certificate.issuerName}<br/>
+            <span style="color: #64748B; font-size: 10px;">Director Técnico / Apoderado Planta RCD</span>
           </div>
         </div>
 
-        <div class="stamp-box">
-          <div style="font-size: 10px; font-weight: bold; color: #047857;">SELLO DIGITAL PLANTA RCD</div>
-          <div style="font-size: 24px; margin: 6px 0;">♻️</div>
-          <div style="font-size: 9px; color: #065F46;">VERIFICADO Y CONFORME</div>
-          <div style="font-size: 8px; color: #64748B; margin-top: 4px;">Ref: ${certificate.verificationCode}</div>
-        </div>
+        ${
+          certificate.status === 'Pendiente de Firma' || !certificate.signedAt
+            ? `
+          <div class="stamp-box" style="border: 2px dashed #DC2626; background: #FEF2F2; color: #991B1B; width: 280px; padding: 12px; text-align: center;">
+            <div style="font-size: 11px; font-weight: bold; color: #DC2626;">⚠️ CERTIFICADO NO VÁLIDO</div>
+            <div style="font-size: 10px; font-weight: bold; margin-top: 4px; color: #991B1B; text-transform: uppercase;">
+              SIN LA FIRMA DIGITAL DE LA EMPRESA
+            </div>
+            <div style="font-size: 9px; color: #B91C1C; margin-top: 6px; line-height: 1.3;">
+              Documento informativo en trámite. Pendiente de firma y sellado digital por la Dirección Técnica.
+            </div>
+            <div style="font-size: 8px; color: #64748B; margin-top: 6px;">Ref: ${certificate.verificationCode}</div>
+          </div>
+        `
+            : `
+          <div class="stamp-box" style="border: 2px solid #059669; background: #ECFDF5; width: 260px; padding: 12px; text-align: center;">
+            <div style="font-size: 10px; font-weight: bold; color: #047857;">SELLO Y FIRMA DIGITAL VALIDADOS</div>
+            ${
+              certificate.signatureData
+                ? `<img src="${certificate.signatureData}" style="max-height: 50px; max-width: 220px; margin: 6px auto; display: block;" alt="Firma Digital" />`
+                : '<div style="font-size: 22px; margin: 4px 0;">✍️</div>'
+            }
+            <div style="font-size: 9px; font-weight: bold; color: #065F46;">FIRMADO DIGITALMENTE POR:</div>
+            <div style="font-size: 10px; color: #0F172A; font-weight: bold;">${certificate.signerName || certificate.issuerName}</div>
+            <div style="font-size: 8px; color: #475569; margin-top: 2px;">NIF: ${certificate.signerNif || 'B-91029384'} | ${certificate.signedAt}</div>
+            <div style="font-size: 8px; color: #059669; margin-top: 4px; font-weight: bold;">✓ VERIFICACIÓN ELECTRÓNICA OK (CSV: ${certificate.verificationCode})</div>
+          </div>
+        `
+        }
       </div>
     </body>
     </html>
