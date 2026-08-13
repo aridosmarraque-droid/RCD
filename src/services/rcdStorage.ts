@@ -1,6 +1,7 @@
 import { Albaran, Certificate, Client, RCDUser, WasteType } from '../types/rcd';
 import { SupabaseService } from './supabaseClient';
 import { UltramsgService } from './ultramsgService';
+import { EmailService } from './emailService';
 
 export const OFFICIAL_WASTE_TYPES: WasteType[] = [
   {
@@ -315,24 +316,37 @@ export class RCDService {
       createdAt: new Date().toISOString(),
       notificationsSent: {
         mobileSent: false,
-        emailSent: client.notifyEmail,
+        emailSent: false,
         timestamp: new Date().toISOString(),
       },
     };
 
-    // Attempt WhatsApp notification via Ultramsg if client has mobile notification enabled
+    let mobileSent = false;
+    let emailSent = false;
+
+    // 1. WhatsApp notification via Ultramsg if client has mobile notification enabled
     if (client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
       const messageText = `🏭 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha registrado en planta un nuevo albarán de entrega:\n📜 *Nº Albarán:* ${created.numAlbaran}\n📦 *Residuo:* ${created.wasteTypeName} (${created.wasteTypeCode})\n⚖️ *Peso Neto:* ${created.quantityTons} toneladas\n🚚 *Matrícula:* ${created.licensePlate}\n📍 *Zona:* ${created.plantZone}\n📅 *Fecha/Hora:* ${created.date} ${created.time}\n\nGracias por su compromiso con la gestión sostenible de RCD.`;
 
       const sendResult = await UltramsgService.sendWhatsApp(client.mobile, messageText);
       if (sendResult.success) {
-        created.notificationsSent = {
-          mobileSent: true,
-          emailSent: client.notifyEmail,
-          timestamp: new Date().toISOString(),
-        };
+        mobileSent = true;
       }
     }
+
+    // 2. Email notification via EmailService if client has notifyEmail enabled and an email address
+    if (client.notifyEmail && client.email) {
+      const emailResult = await EmailService.sendAlbaranEmail(client.email, client.name, created);
+      if (emailResult.success) {
+        emailSent = true;
+      }
+    }
+
+    created.notificationsSent = {
+      mobileSent,
+      emailSent,
+      timestamp: new Date().toISOString(),
+    };
 
     albaranes.unshift(created);
     this.saveAlbaranesLocal(albaranes);
@@ -503,12 +517,26 @@ export class RCDService {
       }
     }
 
-    // Send WhatsApp via Ultramsg if client has mobile number
+    // Send WhatsApp & Email notifications according to client preferences
     const client = this.getClientById(payload.clientId);
-    if (client && client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
-      const msg = `📜 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha emitido un nuevo *Certificado de Valorización de RCD*:\n\n📑 *Nº Certificado:* ${newCertificate.certificateNumber}\n🏗️ *Obra / Promotor:* ${newCertificate.constructionSiteName}\n⚖️ *Total Certificado:* ${newCertificate.totalTons} toneladas\n🔐 *Código Verificación:* ${newCertificate.verificationCode}\n\nPuede consultar e descargar su certificado desde el Portal del Cliente.`;
+    if (client) {
+      if (client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
+        const msg = `📜 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha emitido un nuevo *Certificado de Valorización de RCD*:\n\n📑 *Nº Certificado:* ${newCertificate.certificateNumber}\n🏗️ *Obra / Promotor:* ${newCertificate.constructionSiteName}\n⚖️ *Total Certificado:* ${newCertificate.totalTons} toneladas\n🔐 *Código Verificación:* ${newCertificate.verificationCode}\n\nPuede consultar e descargar su certificado desde el Portal del Cliente.`;
 
-      await UltramsgService.sendWhatsApp(client.mobile, msg);
+        await UltramsgService.sendWhatsApp(client.mobile, msg);
+      }
+
+      if (client.notifyEmail && client.email) {
+        const certSubject = `[Planta RCD] Emitido Certificado de Valorización Nº ${newCertificate.certificateNumber}`;
+        const certText = `Estimado cliente ${client.name},\n\nSe ha emitido un nuevo Certificado de Valorización de RCD:\n\n• Nº Certificado: ${newCertificate.certificateNumber}\n• Obra / Promotor: ${newCertificate.constructionSiteName}\n• Total Certificado: ${newCertificate.totalTons} Toneladas\n• Código Verificación: ${newCertificate.verificationCode}\n\nPuede descargar su certificado desde el Portal del Cliente.`;
+        
+        await EmailService.sendEmail({
+          to: client.email,
+          subject: certSubject,
+          textBody: certText,
+          htmlBody: `<div style="font-family:sans-serif; background:#0f172a; color:#f8fafc; padding:20px; border-radius:12px;"><h2>📜 Planta de Residuos RCD</h2><p>Estimado cliente <strong>${client.name}</strong>,</p><p>Se ha emitido un nuevo Certificado de Valorización de RCD:</p><ul><li><strong>Nº Certificado:</strong> ${newCertificate.certificateNumber}</li><li><strong>Obra / Promotor:</strong> ${newCertificate.constructionSiteName}</li><li><strong>Total Certificado:</strong> ${newCertificate.totalTons} Toneladas</li><li><strong>Código Verificación:</strong> ${newCertificate.verificationCode}</li></ul><p>Disponible en su Portal de Cliente.</p></div>`,
+        });
+      }
     }
 
     return newCertificate;
