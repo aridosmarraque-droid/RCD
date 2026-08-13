@@ -179,7 +179,11 @@ export class SupabaseService {
       rcd_total_tons: cert.totalTons,
       rcd_issuer_name: cert.issuerName || null,
       rcd_verification_code: cert.verificationCode,
-      rcd_status: cert.status || 'Emitido',
+      rcd_status: cert.status || 'Pendiente de Firma',
+      rcd_signature_data: cert.signatureData || null,
+      rcd_signed_at: cert.signedAt || null,
+      rcd_signer_name: cert.signerName || null,
+      rcd_signer_nif: cert.signerNif || null,
       rcd_created_at: cert.issueDate ? `${cert.issueDate}T00:00:00.000Z` : new Date().toISOString(),
     };
   }
@@ -201,7 +205,11 @@ export class SupabaseService {
       totalTons: Number(row.rcd_total_tons || 0),
       issuerName: row.rcd_issuer_name || '',
       verificationCode: row.rcd_verification_code || '',
-      status: row.rcd_status || 'Emitido',
+      status: row.rcd_status || 'Pendiente de Firma',
+      signatureData: row.rcd_signature_data || undefined,
+      signedAt: row.rcd_signed_at || undefined,
+      signerName: row.rcd_signer_name || undefined,
+      signerNif: row.rcd_signer_nif || undefined,
     };
   }
 
