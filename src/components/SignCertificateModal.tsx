@@ -1,256 +1,360 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { ShieldCheck, X, Check, FileSignature, RotateCcw, AlertCircle, Sparkles } from 'lucide-react';
 import { Certificate } from '../types/rcd';
+import { RCDService } from '../services/rcdStorage';
 
-/**
- * Generates an official printable Certificate document HTML / Print View
- */
-export function openPrintableCertificate(certificate: Certificate): void {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    alert('Por favor permita ventanas emergentes para ver el certificado.');
-    return;
-  }
-
-  const breakdownRows = certificate.wasteBreakdown
-    .map(
-      (b) => `
-      <tr>
-        <td style="padding: 8px 12px; border: 1px solid #CBD5E1; font-weight: bold;">${b.wasteTypeCode}</td>
-        <td style="padding: 8px 12px; border: 1px solid #CBD5E1;">${b.wasteTypeName}</td>
-        <td style="padding: 8px 12px; border: 1px solid #CBD5E1; text-align: center;">${b.albaranesCount}</td>
-        <td style="padding: 8px 12px; border: 1px solid #CBD5E1; text-align: right; font-weight: bold; color: #059669;">${b.totalTons.toFixed(2)} t</td>
-      </tr>
-    `
-    )
-    .join('');
-
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-      <meta charset="UTF-8" />
-      <title>Certificado RCD - ${certificate.certificateNumber}</title>
-      <style>
-        body {
-          font-family: Arial, Helvetica, sans-serif;
-          margin: 0;
-          padding: 40px;
-          color: #0F172A;
-          background: #FFFFFF;
-        }
-        .header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          border-bottom: 3px solid #059669;
-          padding-bottom: 16px;
-          margin-bottom: 24px;
-        }
-        .title {
-          font-size: 18px;
-          font-weight: bold;
-          color: #065F46;
-          text-transform: uppercase;
-        }
-        .subtitle {
-          font-size: 12px;
-          color: #475569;
-          margin-top: 4px;
-        }
-        .cert-num {
-          font-size: 16px;
-          font-weight: bold;
-          background: #ECFDF5;
-          color: #047857;
-          padding: 8px 16px;
-          border-radius: 6px;
-          border: 1px solid #A7F3D0;
-        }
-        .section-box {
-          background: #F8FAFC;
-          border: 1px solid #E2E8F0;
-          border-radius: 6px;
-          padding: 16px;
-          margin-bottom: 20px;
-        }
-        .section-title {
-          font-size: 13px;
-          font-weight: bold;
-          color: #0F172A;
-          text-transform: uppercase;
-          margin-bottom: 10px;
-          border-bottom: 1px solid #CBD5E1;
-          padding-bottom: 4px;
-        }
-        .grid-2 {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
-        }
-        .field-label {
-          font-size: 11px;
-          color: #64748B;
-          text-transform: uppercase;
-        }
-        .field-value {
-          font-size: 13px;
-          font-weight: bold;
-          color: #0F172A;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-top: 12px;
-          font-size: 12px;
-        }
-        th {
-          background: #1E293B;
-          color: #FFFFFF;
-          padding: 10px 12px;
-          text-align: left;
-          font-size: 11px;
-          text-transform: uppercase;
-        }
-        .legal-text {
-          font-size: 11px;
-          line-height: 1.5;
-          color: #334155;
-          margin: 20px 0;
-          padding: 12px;
-          background: #F1F5F9;
-          border-left: 4px solid #059669;
-        }
-        .footer {
-          margin-top: 40px;
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-end;
-        }
-        .stamp-box {
-          border: 2px dashed #059669;
-          padding: 16px;
-          border-radius: 8px;
-          text-align: center;
-          width: 220px;
-          background: #ECFDF5;
-        }
-        .print-btn {
-          position: fixed;
-          top: 20px;
-          right: 20px;
-          background: #059669;
-          color: white;
-          border: none;
-          padding: 12px 20px;
-          border-radius: 6px;
-          font-weight: bold;
-          cursor: pointer;
-          box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-        }
-        @media print {
-          .print-btn { display: none; }
-          body { padding: 0; }
-        }
-      </style>
-    </head>
-    <body>
-      <button class="print-btn" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
-
-      <div class="header">
-        <div>
-          <div class="title">PLANTA DE VALORIZACIÓN Y RECICLAJE RCD</div>
-          <div class="subtitle">Gestor Autorizado de Residuos RCD-SE/2024-00912 | NIF: B-91029384</div>
-          <div class="subtitle">Ctra. Isla Mayor km 4.5, 41080 Sevilla | Email: certificados@plantarcd.es</div>
-        </div>
-        <div class="cert-num">${certificate.certificateNumber}</div>
-      </div>
-
-      <h2 style="text-align: center; font-size: 16px; text-transform: uppercase; margin: 16px 0; color: #065F46;">
-        CERTIFICADO DE GESTIÓN Y VALORIZACIÓN DE RESIDUOS DE CONSTRUCCIÓN Y DEMOLICIÓN
-      </h2>
-
-      <div class="legal-text">
-        <strong>MARCO LEGAL:</strong> Se expide el presente certificado de recepción, tratamiento y valorización de Residuos de Construcción y Demolición (RCD) en cumplimiento del <strong>Real Decreto 105/2008</strong> por el que se regula la producción y gestión de los RCD y de la <strong>Ley 7/2022, de 8 de abril</strong>, de residuos y suelos contaminados para una economía circular.
-      </div>
-
-      <div class="grid-2">
-        <div class="section-box">
-          <div class="section-title">1. CLIENTE / SOLICITANTE</div>
-          <div class="field-label">Empresa / Transportista</div>
-          <div class="field-value">${certificate.clientName}</div>
-          <div style="margin-top: 8px;">
-            <span class="field-label">CIF / NIF: </span>
-            <span class="field-value">${certificate.clientCif}</span>
-          </div>
-        </div>
-
-        <div class="section-box" style="border-color: #059669; background: #F0FDF4;">
-          <div class="section-title" style="color: #047857; border-color: #A7F3D0;">2. PROMOTOR / TERCERO BENEFICIARIO</div>
-          <div class="field-label">Promotor de la Obra</div>
-          <div class="field-value" style="color: #065F46; font-size: 14px;">${certificate.thirdPartyName}</div>
-          <div style="margin-top: 6px;">
-            <span class="field-label">NIF/CIF Promotor: </span>
-            <span class="field-value">${certificate.thirdPartyCif}</span>
-          </div>
-          <div style="margin-top: 6px;">
-            <span class="field-label">Obra / Referencia: </span>
-            <span class="field-value">${certificate.constructionSiteName}</span>
-          </div>
-          <div style="margin-top: 4px;">
-            <span class="field-label">Ubicación Obra: </span>
-            <span class="field-value">${certificate.constructionSiteAddress}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="section-box">
-        <div class="section-title">3. RESUMEN DE RESIDUOS VALORIZADOS EN PLANTA (CÓDIGOS LER)</div>
-        <table>
-          <thead>
-            <tr>
-              <th>CÓDIGO LER</th>
-              <th>DENOMINACIÓN DEL RESIDUO</th>
-              <th style="text-align: center;">Nº ENTRADAS</th>
-              <th style="text-align: right;">CANTIDAD TOTAL (t)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${breakdownRows}
-          </tbody>
-          <tfoot>
-            <tr style="background: #ECFDF5; font-size: 14px;">
-              <td colspan="3" style="padding: 10px; font-weight: bold; text-align: right;">TOTAL RESIDUOS CERTIFICADOS:</td>
-              <td style="padding: 10px; font-weight: bold; text-align: right; color: #047857;">${certificate.totalTons.toFixed(2)} TONELADAS</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-
-      <div style="font-size: 10px; color: #64748B; margin-top: 10px; font-style: italic; background: #FFFBEB; padding: 8px; border: 1px solid #FDE68A; border-radius: 4px;">
-        ⚠️ <strong>AVISO DE INMUTABILIDAD:</strong> Los albaranes de entrega incluidos en este certificado (Total: ${certificate.albaranIds.length} entregas) han quedado bloqueados electrónicamente en el sistema y no podrán ser asignados a ningún otro certificado de gestión.
-      </div>
-
-      <div class="footer">
-        <div>
-          <div style="font-size: 11px; color: #475569;">Fecha de Emisión: <strong>${certificate.issueDate}</strong></div>
-          <div style="font-size: 11px; color: #475569; margin-top: 4px;">Código de Verificación Electrónica: <strong>${certificate.verificationCode}</strong></div>
-          <div style="margin-top: 20px; font-size: 11px; color: #0F172A;">
-            <strong>FIRMADO Y SELLADO POR:</strong><br/>
-            ${certificate.issuerName}<br/>
-            Director Técnico Planta de Tratamiento RCD
-          </div>
-        </div>
-
-        <div class="stamp-box">
-          <div style="font-size: 10px; font-weight: bold; color: #047857;">SELLO DIGITAL PLANTA RCD</div>
-          <div style="font-size: 24px; margin: 6px 0;">♻️</div>
-          <div style="font-size: 9px; color: #065F46;">VERIFICADO Y CONFORME</div>
-          <div style="font-size: 8px; color: #64748B; margin-top: 4px;">Ref: ${certificate.verificationCode}</div>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-
-  printWindow.document.write(htmlContent);
-  printWindow.document.close();
+interface SignCertificateModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  certificate: Certificate | null;
+  onSignedSuccess: (updatedCert: Certificate) => void;
 }
+
+export const SignCertificateModal: React.FC<SignCertificateModalProps> = ({
+  isOpen,
+  onClose,
+  certificate,
+  onSignedSuccess,
+}) => {
+  const [signerName, setSignerName] = useState('Manuel Marraque - Director Técnico');
+  const [signerNif, setSignerNif] = useState('B-91029384');
+  const [useOfficialStamp, setUseOfficialStamp] = useState(true);
+  const [isSigning, setIsSigning] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isDrawing = useRef(false);
+  const hasDrawn = useRef(false);
+
+  useEffect(() => {
+    if (isOpen && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !certificate) return null;
+
+  // Canvas drawing handlers
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    isDrawing.current = true;
+    hasDrawn.current = true;
+    draw(e);
+  };
+
+  const stopDrawing = () => {
+    isDrawing.current = false;
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext('2d');
+      if (ctx) ctx.beginPath();
+    }
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing.current || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    let clientX = 0;
+    let clientY = 0;
+
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#10b981';
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const clearCanvas = () => {
+    hasDrawn.current = false;
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      }
+    }
+  };
+
+  const generateOfficialStampDataUrl = (): string => {
+    const stampCanvas = document.createElement('canvas');
+    stampCanvas.width = 300;
+    stampCanvas.height = 100;
+    const ctx = stampCanvas.getContext('2d');
+    if (!ctx) return '';
+
+    // Draw Stamp Frame
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 300, 100);
+
+    ctx.strokeStyle = '#059669';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(6, 6, 288, 88);
+
+    ctx.fillStyle = '#047857';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('PLANTA DE VALORIZACIÓN Y RECICLAJE RCD', 150, 26);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('FIRMA Y SELLO DIGITAL AUTORIZADO', 150, 44);
+
+    ctx.fillStyle = '#047857';
+    ctx.font = 'italic 10px sans-serif';
+    ctx.fillText(`${signerName}`, 150, 62);
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '9px monospace';
+    ctx.fillText(`NIF: ${signerNif} | Ref: ${certificate.verificationCode}`, 150, 80);
+
+    return stampCanvas.toDataURL('image/png');
+  };
+
+  const handleSign = async () => {
+    setErrorMsg('');
+    setIsSigning(true);
+
+    try {
+      let signatureData = '';
+      if (useOfficialStamp) {
+        signatureData = generateOfficialStampDataUrl();
+      } else if (hasDrawn.current && canvasRef.current) {
+        signatureData = canvasRef.current.toDataURL('image/png');
+      } else {
+        signatureData = generateOfficialStampDataUrl();
+      }
+
+      const updatedCert = await RCDService.signCertificate(
+        certificate.id,
+        signatureData,
+        signerName,
+        signerNif
+      );
+
+      setIsSigning(false);
+      onSignedSuccess(updatedCert);
+      onClose();
+    } catch (err: any) {
+      setIsSigning(false);
+      setErrorMsg(err.message || 'Error al firmar digitalmente el certificado.');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden my-auto">
+        
+        {/* Header */}
+        <div className="bg-slate-950 px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="bg-emerald-500/20 text-emerald-400 p-2 rounded-xl border border-emerald-500/30">
+              <FileSignature className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-bold text-white text-base">Firma Digital de Certificado RCD</h3>
+              <p className="text-xs text-slate-400">
+                Aprobación oficial del certificado solicitado
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-6 space-y-5 text-slate-200">
+          
+          {errorMsg && (
+            <div className="bg-rose-950/60 border border-rose-800 text-rose-200 p-3 rounded-xl text-xs flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {/* Certificate Summary Card */}
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+              <span className="text-xs font-bold text-emerald-400">{certificate.certificateNumber}</span>
+              <span className="text-[11px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-medium">
+                ⏳ Pendiente de Firma Digital
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+              <div>
+                <span className="text-slate-400 block text-[11px]">Cliente:</span>
+                <strong className="text-white">{certificate.clientName}</strong>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">Obra / Promotor:</span>
+                <strong className="text-white">{certificate.thirdPartyName}</strong>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">Residuos Certificados:</span>
+                <strong className="text-emerald-400">{certificate.totalTons.toFixed(2)} Toneladas</strong>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">Código Verificación:</span>
+                <strong className="text-slate-300 font-mono text-[11px]">{certificate.verificationCode}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Signer Details Form */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold uppercase text-slate-300 tracking-wider">
+              Datos del Responsable de Firma Autorizado
+            </h4>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                  Nombre y Cargo del Firmante *
+                </label>
+                <input
+                  type="text"
+                  value={signerName}
+                  onChange={(e) => setSignerName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                  NIF / CIF de la Empresa *
+                </label>
+                <input
+                  type="text"
+                  value={signerNif}
+                  onChange={(e) => setSignerNif(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Signature Mode Selector */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-white flex items-center space-x-2">
+                <Sparkles className="w-4 h-4 text-emerald-400" />
+                <span>Modalidad de Firma y Sello</span>
+              </label>
+
+              <div className="flex items-center space-x-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setUseOfficialStamp(true)}
+                  className={`px-3 py-1 rounded-lg font-medium transition ${
+                    useOfficialStamp
+                      ? 'bg-emerald-500 text-slate-950 font-bold'
+                      : 'bg-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Sello Oficial Automático
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUseOfficialStamp(false)}
+                  className={`px-3 py-1 rounded-lg font-medium transition ${
+                    !useOfficialStamp
+                      ? 'bg-emerald-500 text-slate-950 font-bold'
+                      : 'bg-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Dibujar Firma Manual
+                </button>
+              </div>
+            </div>
+
+            {useOfficialStamp ? (
+              <div className="bg-slate-950 border border-emerald-500/30 rounded-xl p-4 text-center space-y-2">
+                <div className="inline-flex items-center space-x-2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-1 rounded-full text-xs font-bold">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Sello y Firma Digital de la Planta de Residuos RCD</span>
+                </div>
+                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                  Se generará una firma digital inmutable estampillada con el código CSV de verificación electrónica <code className="text-emerald-400 font-mono">{certificate.verificationCode}</code> y la fecha y hora de la firma.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-[11px] text-slate-400">Dibuje su firma con el ratón o pantalla táctil:</span>
+                  <button
+                    type="button"
+                    onClick={clearCanvas}
+                    className="text-xs text-slate-400 hover:text-white flex items-center space-x-1"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Limpiar</span>
+                  </button>
+                </div>
+                <canvas
+                  ref={canvasRef}
+                  width={480}
+                  height={120}
+                  onMouseDown={startDrawing}
+                  onMouseMove={draw}
+                  onMouseUp={stopDrawing}
+                  onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing}
+                  onTouchMove={draw}
+                  onTouchEnd={stopDrawing}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl cursor-crosshair touch-none"
+                />
+              </div>
+            )}
+          </div>
+
+        </div>
+
+        {/* Footer */}
+        <div className="bg-slate-950 px-6 py-4 border-t border-slate-800 flex items-center justify-between">
+          <button
+            onClick={onClose}
+            className="text-xs text-slate-400 hover:text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition"
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            disabled={isSigning}
+            onClick={handleSign}
+            className="flex items-center space-x-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-5 py-2.5 rounded-xl text-xs transition disabled:opacity-50"
+          >
+            <Check className="w-4 h-4" />
+            <span>{isSigning ? 'Procesando Firma...' : 'Firmar Digitalmente y Notificar al Cliente'}</span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+};
