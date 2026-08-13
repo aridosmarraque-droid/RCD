@@ -50,7 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Column 2: Mode Switcher Buttons (Locked in Center) */}
           <div className="flex items-center justify-center">
             <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800/80 shadow-inner shrink-0 h-11">
-              {(!isEmpresa || isAdmin) && (
+              {(isTrabajador || isAdmin) && (
                 <button
                   onClick={() => setMode('operator')}
                   className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all h-full ${
@@ -78,7 +78,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               )}
 
-              {(!isEmpresa || isAdmin) && (
+              {isAdmin && (
                 <button
                   onClick={() => setMode('admin')}
                   className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all h-full ${
