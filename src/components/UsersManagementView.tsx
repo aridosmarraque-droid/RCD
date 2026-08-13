@@ -77,7 +77,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({
       const firstClient = clients[0];
       setSelectedClientIdInForm(firstClient.id);
       setFormName(firstClient.name);
-      setFormNifCif(firstClient.cif);
+      setFormNifCif((firstClient.cif || '').replace(/[- ]/g, '').toUpperCase());
       setFormClientCode(firstClient.code);
       if (!formCode) setFormCode(firstClient.code);
     } else if (type !== 'empresa') {
@@ -95,7 +95,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({
     const client = clients.find((c) => c.id === clientId);
     if (client) {
       setFormName(client.name);
-      setFormNifCif(client.cif);
+      setFormNifCif((client.cif || '').replace(/[- ]/g, '').toUpperCase());
       setFormClientCode(client.code);
       setFormCode(client.code);
       setFormError('');
@@ -107,7 +107,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({
     setFormError('');
 
     const cleanName = formName.trim();
-    const cleanNif = formNifCif.trim().toUpperCase();
+    const cleanNif = formNifCif.replace(/[- ]/g, '').trim().toUpperCase();
     const cleanCode = formCode.trim();
 
     if (!cleanName || !cleanNif || !cleanCode) {
