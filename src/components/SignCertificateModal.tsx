@@ -358,5 +358,3 @@ export const SignCertificateModal: React.FC<SignCertificateModalProps> = ({
     </div>
   );
 };
-
-
