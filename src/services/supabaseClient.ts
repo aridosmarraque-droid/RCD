@@ -420,4 +420,80 @@ export class SupabaseService {
       console.warn('Notice deleting rcd_users from Supabase:', err);
     }
   }
+
+  // ==========================================
+  // WASTE TYPES
+  // ==========================================
+
+  private static mapWasteTypeToDB(wt: WasteType) {
+    return {
+      rcd_code: wt.code,
+      rcd_name: wt.name,
+      rcd_category: wt.category || 'Limpio',
+      rcd_price_per_ton: wt.pricePerTon || 0,
+      rcd_description: wt.description || null,
+      rcd_max_capacity_tons: wt.maxCapacityTons || 5000,
+    };
+  }
+
+  private static mapDBToWasteType(row: any): WasteType {
+    return {
+      code: row.rcd_code,
+      name: row.rcd_name,
+      category: row.rcd_category || 'Limpio',
+      pricePerTon: Number(row.rcd_price_per_ton) || 0,
+      description: row.rcd_description || undefined,
+      maxCapacityTons: Number(row.rcd_max_capacity_tons) || 5000,
+    };
+  }
+
+  static async fetchWasteTypes(): Promise<WasteType[] | null> {
+    const supabase = this.getClient();
+    if (!supabase) return null;
+
+    try {
+      const { data, error } = await supabase.from('rcd_waste_types').select('*');
+
+      if (error) {
+        console.warn('Notice fetching rcd_waste_types from Supabase:', error.message || error);
+        return null;
+      }
+
+      return (data || []).map(this.mapDBToWasteType);
+    } catch (err) {
+      console.warn('Notice connecting to rcd_waste_types on Supabase:', err);
+      return null;
+    }
+  }
+
+  static async upsertWasteTypes(types: WasteType[]): Promise<void> {
+    const supabase = this.getClient();
+    if (!supabase) return;
+
+    try {
+      const rows = types.map(this.mapWasteTypeToDB);
+      const { error } = await supabase.from('rcd_waste_types').upsert(rows, { onConflict: 'rcd_code' });
+
+      if (error) {
+        console.warn('Notice upserting rcd_waste_types into Supabase:', error.message || error);
+      }
+    } catch (err) {
+      console.warn('Notice upserting rcd_waste_types into Supabase:', err);
+    }
+  }
+
+  static async deleteWasteType(code: string): Promise<void> {
+    const supabase = this.getClient();
+    if (!supabase) return;
+
+    try {
+      const { error } = await supabase.from('rcd_waste_types').delete().eq('rcd_code', code);
+
+      if (error) {
+        console.warn('Notice deleting rcd_waste_types from Supabase:', error.message || error);
+      }
+    } catch (err) {
+      console.warn('Notice deleting rcd_waste_types from Supabase:', err);
+    }
+  }
 }
