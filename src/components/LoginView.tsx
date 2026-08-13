@@ -23,13 +23,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, usersList 
   const [nifCifInput, setNifCifInput] = useState('');
   const [codeInput, setCodeInput] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [showDemoHelp, setShowDemoHelp] = useState(false);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
-    const cleanNif = nifCifInput.trim().toUpperCase();
+    const cleanNif = nifCifInput.replace(/[- ]/g, '').trim().toUpperCase();
     const cleanCode = codeInput.trim();
 
     if (!cleanNif || !cleanCode) {
@@ -37,10 +36,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, usersList 
       return;
     }
 
-    // Match against current users
+    // Match against current users (ignoring hyphens and spaces in CIF)
     const userMatch = usersList.find(
       (u) =>
-        u.nifCif.trim().toUpperCase() === cleanNif &&
+        u.nifCif.replace(/[- ]/g, '').trim().toUpperCase() === cleanNif &&
         u.code.trim() === cleanCode
     );
 
@@ -81,7 +80,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, usersList 
           </div>
           <h1 className="text-2xl font-black text-white tracking-tight">Acceso Seguro Planta RCD</h1>
           <p className="text-xs text-slate-400">
-            EcoMarraque S.L. — Sistema de Identificación y Control de Accesos
+            Sistema de Identificación y Control de Accesos
           </p>
         </div>
 
@@ -186,54 +185,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, usersList 
             </button>
           </form>
 
-          {/* Demo Users Quick Help Toggle */}
-          <div className="pt-2 border-t border-slate-800/80">
-            <button
-              type="button"
-              onClick={() => setShowDemoHelp(!showDemoHelp)}
-              className="w-full flex items-center justify-center space-x-1.5 text-xs text-slate-400 hover:text-white transition py-1"
-            >
-              <Info className="w-3.5 h-3.5 text-amber-400" />
-              <span>Ver Usuarios de Demostración Registrados</span>
-            </button>
-
-            {showDemoHelp && (
-              <div className="mt-3 bg-slate-950 border border-slate-800 rounded-2xl p-3.5 space-y-2 text-xs">
-                <span className="font-bold text-amber-400 text-[11px] uppercase tracking-wider block">
-                  Cuentas de prueba en Supabase / Local:
-                </span>
-                <div className="space-y-1.5">
-                  {usersList.map((usr) => (
-                    <div
-                      key={usr.id}
-                      onClick={() => handleQuickDemoLogin(usr)}
-                      className="flex items-center justify-between p-2 rounded-xl bg-slate-900 border border-slate-800/80 hover:border-emerald-500/50 cursor-pointer transition text-[11px]"
-                    >
-                      <div>
-                        <span className="font-bold text-white block">{usr.name}</span>
-                        <span className="text-slate-400 font-mono">
-                          NIF/CIF: <strong className="text-emerald-400">{usr.nifCif}</strong> | Clave: <strong className="text-slate-300">{usr.code}</strong>
-                        </span>
-                      </div>
-                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${
-                        usr.userType === 'admin'
-                          ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-                          : usr.userType === 'trabajador'
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                          : 'bg-sky-500/20 text-sky-300 border-sky-500/30'
-                      }`}>
-                        {usr.userType}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
         </div>
 
       </div>
     </div>
   );
 };
+
