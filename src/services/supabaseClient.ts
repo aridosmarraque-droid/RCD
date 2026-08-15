@@ -184,6 +184,10 @@ export class SupabaseService {
       rcd_signed_at: cert.signedAt || null,
       rcd_signer_name: cert.signerName || null,
       rcd_signer_nif: cert.signerNif || null,
+      rcd_fnmt_cert_issuer: cert.fnmtCertIssuer || null,
+      rcd_fnmt_cert_serial: cert.fnmtCertSerial || null,
+      rcd_fnmt_hash: cert.fnmtHash || null,
+      rcd_signature_type: cert.signatureType || 'fnmt',
       rcd_created_at: cert.issueDate ? `${cert.issueDate}T00:00:00.000Z` : new Date().toISOString(),
     };
   }
@@ -210,6 +214,10 @@ export class SupabaseService {
       signedAt: row.rcd_signed_at || undefined,
       signerName: row.rcd_signer_name || undefined,
       signerNif: row.rcd_signer_nif || undefined,
+      fnmtCertIssuer: row.rcd_fnmt_cert_issuer || undefined,
+      fnmtCertSerial: row.rcd_fnmt_cert_serial || undefined,
+      fnmtHash: row.rcd_fnmt_hash || undefined,
+      signatureType: row.rcd_signature_type || undefined,
     };
   }
 
