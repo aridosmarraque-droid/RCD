@@ -236,11 +236,20 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
         {/* Action Button & Quick Tabs */}
         <div className="flex flex-wrap items-center gap-2">
           <button
+            onClick={onRefreshData}
+            title="Refrescar datos directamente desde la base de datos de Supabase"
+            className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition border border-slate-700 shadow"
+          >
+            <RefreshCw className="w-4 h-4 text-emerald-400" />
+            <span>Actualizar BBDD</span>
+          </button>
+
+          <button
             onClick={() => setShowWasteTypesModal(true)}
             className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition shadow-lg shadow-emerald-500/20"
           >
             <Settings className="w-4 h-4" />
-            <span>Configurar Tipos de Residuos & Capacidades</span>
+            <span>Configurar Residuos & Capacidades</span>
           </button>
 
           <div className="flex items-center space-x-1 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
@@ -494,54 +503,68 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {sortedAlbaranes.map((alb) => (
-                    <tr key={alb.id} className="hover:bg-slate-800/50 transition">
-                      <td className="py-3 px-4 font-mono font-bold text-emerald-400">{alb.numAlbaran}</td>
-                      <td className="py-3 px-4 font-bold text-white">{alb.clientName}</td>
-                      <td className="py-3 px-4 text-slate-300">{alb.date} <span className="text-[10px] text-slate-500">{alb.time}</span></td>
-                      <td className="py-3 px-4 font-mono font-bold text-amber-400">{alb.licensePlate}</td>
-                      <td className="py-3 px-4">{alb.wasteTypeCode} - {alb.wasteTypeName}</td>
-                      <td className="py-3 px-4 text-right font-extrabold text-white">{alb.quantityTons.toFixed(2)} t</td>
-                      <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => setSelectedPhotoAlbaran(alb)}
-                          className="text-sky-400 bg-sky-500/10 px-2 py-1 rounded border border-sky-500/20 font-semibold hover:bg-sky-500/20 transition"
-                        >
-                          Ver Fotos
-                        </button>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        {alb.certified ? (
-                          <span className="text-slate-300 bg-slate-800 px-2 py-0.5 rounded-full text-[10px] font-bold border border-slate-700">
-                            🔒 {alb.certificateNumber}
+                  {sortedAlbaranes.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="py-12 text-center text-slate-400">
+                        <div className="flex flex-col items-center justify-center space-y-2">
+                          <FileText className="w-8 h-8 text-slate-600 mb-1" />
+                          <span className="font-bold text-slate-300 text-sm">No hay albaranes registrados</span>
+                          <span className="text-xs text-slate-500">
+                            La base de datos no contiene albaranes con los filtros actuales o aún no se han registrado entradas en báscula.
                           </span>
-                        ) : (
-                          <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full text-[10px] font-bold border border-emerald-500/20">
-                            🟢 LIBRE
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        {alb.certified ? (
-                          <button
-                            disabled
-                            title="No se puede eliminar: El albarán tiene un certificado emitido."
-                            className="p-1.5 text-slate-600 bg-slate-900 rounded cursor-not-allowed border border-slate-800"
-                          >
-                            <Trash2 className="w-4 h-4 opacity-40" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleDeleteAlbaran(alb)}
-                            title="Eliminar Albarán"
-                            className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded transition"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    sortedAlbaranes.map((alb) => (
+                      <tr key={alb.id} className="hover:bg-slate-800/50 transition">
+                        <td className="py-3 px-4 font-mono font-bold text-emerald-400">{alb.numAlbaran}</td>
+                        <td className="py-3 px-4 font-bold text-white">{alb.clientName}</td>
+                        <td className="py-3 px-4 text-slate-300">{alb.date} <span className="text-[10px] text-slate-500">{alb.time}</span></td>
+                        <td className="py-3 px-4 font-mono font-bold text-amber-400">{alb.licensePlate}</td>
+                        <td className="py-3 px-4">{alb.wasteTypeCode} - {alb.wasteTypeName}</td>
+                        <td className="py-3 px-4 text-right font-extrabold text-white">{alb.quantityTons.toFixed(2)} t</td>
+                        <td className="py-3 px-4 text-center">
+                          <button
+                            onClick={() => setSelectedPhotoAlbaran(alb)}
+                            className="text-sky-400 bg-sky-500/10 px-2 py-1 rounded border border-sky-500/20 font-semibold hover:bg-sky-500/20 transition"
+                          >
+                            Ver Fotos
+                          </button>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {alb.certified ? (
+                            <span className="text-slate-300 bg-slate-800 px-2 py-0.5 rounded-full text-[10px] font-bold border border-slate-700">
+                              🔒 {alb.certificateNumber}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full text-[10px] font-bold border border-emerald-500/20">
+                              🟢 LIBRE
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {alb.certified ? (
+                            <button
+                              disabled
+                              title="No se puede eliminar: El albarán tiene un certificado emitido."
+                              className="p-1.5 text-slate-600 bg-slate-900 rounded cursor-not-allowed border border-slate-800"
+                            >
+                              <Trash2 className="w-4 h-4 opacity-40" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleDeleteAlbaran(alb)}
+                              title="Eliminar Albarán"
+                              className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded transition"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
