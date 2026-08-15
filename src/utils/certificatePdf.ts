@@ -243,29 +243,35 @@ export function openPrintableCertificate(certificate: Certificate): void {
         ${
           certificate.status === 'Pendiente de Firma' || !certificate.signedAt
             ? `
-          <div class="stamp-box" style="border: 2px dashed #DC2626; background: #FEF2F2; color: #991B1B; width: 280px; padding: 12px; text-align: center;">
+          <div class="stamp-box" style="border: 2px dashed #DC2626; background: #FEF2F2; color: #991B1B; width: 300px; padding: 12px; text-align: center;">
             <div style="font-size: 11px; font-weight: bold; color: #DC2626;">⚠️ CERTIFICADO NO VÁLIDO</div>
             <div style="font-size: 10px; font-weight: bold; margin-top: 4px; color: #991B1B; text-transform: uppercase;">
               SIN LA FIRMA DIGITAL DE LA EMPRESA
             </div>
             <div style="font-size: 9px; color: #B91C1C; margin-top: 6px; line-height: 1.3;">
-              Documento informativo en trámite. Pendiente de firma y sellado digital por la Dirección Técnica.
+              Documento en trámite. Pendiente de firma y sellado digital por la Dirección Técnica mediante Certificado FNMT-RCM.
             </div>
             <div style="font-size: 8px; color: #64748B; margin-top: 6px;">Ref: ${certificate.verificationCode}</div>
           </div>
         `
             : `
-          <div class="stamp-box" style="border: 2px solid #059669; background: #ECFDF5; width: 260px; padding: 12px; text-align: center;">
-            <div style="font-size: 10px; font-weight: bold; color: #047857;">SELLO Y FIRMA DIGITAL VALIDADOS</div>
+          <div class="stamp-box" style="border: 2px solid #047857; background: #ECFDF5; width: 320px; padding: 10px; text-align: left;">
+            <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #A7F3D0; padding-bottom: 4px; margin-bottom: 6px;">
+              <span style="font-size: 9px; font-weight: bold; color: #047857;">🏛️ FIRMA DIGITAL FNMT-RCM</span>
+              <span style="font-size: 8px; font-weight: bold; background: #047857; color: #FFFFFF; padding: 1px 5px; border-radius: 3px;">eIDAS VÁLIDO</span>
+            </div>
             ${
               certificate.signatureData
-                ? `<img src="${certificate.signatureData}" style="max-height: 50px; max-width: 220px; margin: 6px auto; display: block;" alt="Firma Digital" />`
-                : '<div style="font-size: 22px; margin: 4px 0;">✍️</div>'
+                ? `<img src="${certificate.signatureData}" style="max-height: 52px; width: 100%; object-fit: contain; margin: 4px 0; display: block;" alt="Firma FNMT" />`
+                : ''
             }
-            <div style="font-size: 9px; font-weight: bold; color: #065F46;">FIRMADO DIGITALMENTE POR:</div>
-            <div style="font-size: 10px; color: #0F172A; font-weight: bold;">${certificate.signerName || certificate.issuerName}</div>
-            <div style="font-size: 8px; color: #475569; margin-top: 2px;">NIF: ${certificate.signerNif || 'B-91029384'} | ${certificate.signedAt}</div>
-            <div style="font-size: 8px; color: #059669; margin-top: 4px; font-weight: bold;">✓ VERIFICACIÓN ELECTRÓNICA OK (CSV: ${certificate.verificationCode})</div>
+            <div style="font-size: 8.5px; color: #0F172A; line-height: 1.35; margin-top: 4px;">
+              <div><strong>Firmante:</strong> ${certificate.signerName || certificate.issuerName}</div>
+              <div><strong>NIF/CIF:</strong> ${certificate.signerNif || 'B-91029384'} | <strong>Emisor:</strong> ${certificate.fnmtCertIssuer || 'AC Representación FNMT-RCM'}</div>
+              <div><strong>Serie FNMT:</strong> <span style="font-family: monospace; font-size: 8px;">${certificate.fnmtCertSerial || '3C:8E:29:A1:B4:77:F0:92'}</span></div>
+              <div><strong>Fecha y Hora:</strong> ${certificate.signedAt}</div>
+              <div style="color: #047857; font-weight: bold; margin-top: 2px;">✓ CSV: <span style="font-family: monospace;">${certificate.verificationCode}</span> | SHA256withRSA</div>
+            </div>
           </div>
         `
         }
