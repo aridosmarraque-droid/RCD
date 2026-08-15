@@ -1,6 +1,68 @@
 import { Certificate } from '../types/rcd';
 
 /**
+ * Downloads the authentic Adobe Acrobat / AutoFirma signed PDF file
+ */
+export function downloadSignedPdfFile(certificate: Certificate): void {
+  if (!certificate.signedPdfData) {
+    openPrintableCertificate(certificate);
+    return;
+  }
+
+  const fileName = certificate.signedPdfFileName || `${certificate.certificateNumber}_Firmado_FNMT.pdf`;
+
+  try {
+    if (certificate.signedPdfData.startsWith('data:application/pdf') || certificate.signedPdfData.startsWith('data:;base64')) {
+      const base64Parts = certificate.signedPdfData.split(',');
+      const base64Data = base64Parts[1] || base64Parts[0];
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } else if (certificate.signedPdfData.startsWith('http') || certificate.signedPdfData.startsWith('/')) {
+      const link = document.createElement('a');
+      link.href = certificate.signedPdfData;
+      link.download = fileName;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      openPrintableCertificate(certificate);
+    }
+  } catch (err) {
+    console.error('Error downloading signed PDF:', err);
+    openPrintableCertificate(certificate);
+  }
+}
+
+/**
+ * Opens or downloads the certificate document:
+ * If a real Acrobat-signed PDF exists, downloads it directly.
+ * Otherwise, opens the printable official certificate view.
+ */
+export function openOrDownloadCertificate(certificate: Certificate): void {
+  if (certificate.signedPdfData) {
+    downloadSignedPdfFile(certificate);
+  } else {
+    openPrintableCertificate(certificate);
+  }
+}
+
+/**
  * Generates an official printable Certificate document HTML / Print View
  */
 export function openPrintableCertificate(certificate: Certificate): void {
