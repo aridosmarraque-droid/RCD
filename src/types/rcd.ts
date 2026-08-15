@@ -82,7 +82,9 @@ export interface Certificate {
   fnmtCertIssuer?: string; // e.g. "FNMT-RCM / AC Representación"
   fnmtCertSerial?: string; // Serial number of FNMT digital certificate
   fnmtHash?: string; // SHA-256 digital signature hash
-  signatureType?: 'fnmt' | 'manual' | 'both';
+  signatureType?: 'fnmt' | 'manual' | 'both' | 'acrobat_pades';
+  signedPdfData?: string; // Base64 data URL (data:application/pdf;base64,...) or URL of the Acrobat/AutoFirma signed PDF
+  signedPdfFileName?: string; // Original name of the signed PDF file (e.g. CERT-2026-0089_firmado.pdf)
 }
 
 export interface RCDUser {
