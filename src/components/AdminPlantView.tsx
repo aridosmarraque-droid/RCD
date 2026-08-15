@@ -82,12 +82,6 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
   // Exercise (Año) state for Analytics & Capacity Metrics
   const currentYearStr = new Date().getFullYear().toString();
   const [ejercicioYear, setEjercicioYear] = useState<string>('all');
-  
-  // State for issuing certificate on behalf of selected client
-  const [selectedClientForCert, setSelectedClientForCert] = useState<Client | null>(null);
-
-  // State for Waste Types Configuration Modal
-  const [showWasteTypesModal, setShowWasteTypesModal] = useState(false);
 
   // Waste types list
   const configuredWasteTypes = RCDService.getWasteTypes();
