@@ -129,7 +129,9 @@ ALTER TABLE IF EXISTS public.rcd_certificates
     ADD COLUMN IF NOT EXISTS rcd_fnmt_cert_issuer TEXT,
     ADD COLUMN IF NOT EXISTS rcd_fnmt_cert_serial TEXT,
     ADD COLUMN IF NOT EXISTS rcd_fnmt_hash TEXT,
-    ADD COLUMN IF NOT EXISTS rcd_signature_type TEXT;`;
+    ADD COLUMN IF NOT EXISTS rcd_signature_type TEXT,
+    ADD COLUMN IF NOT EXISTS rcd_signed_pdf_data TEXT,
+    ADD COLUMN IF NOT EXISTS rcd_signed_pdf_filename TEXT;`;
 
   const sqlDDLCode = `-- ========================================================
 -- SQL COMPLETO PARA CREAR LAS TABLAS RCD DESDE CERO
@@ -198,6 +200,8 @@ CREATE TABLE IF NOT EXISTS public.rcd_certificates (
     rcd_fnmt_cert_serial TEXT,
     rcd_fnmt_hash TEXT,
     rcd_signature_type TEXT,
+    rcd_signed_pdf_data TEXT,
+    rcd_signed_pdf_filename TEXT,
     rcd_created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
