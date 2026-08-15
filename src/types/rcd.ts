@@ -79,6 +79,10 @@ export interface Certificate {
   signedAt?: string; // Date string or ISO timestamp when signed
   signerName?: string; // Name of person who signed
   signerNif?: string; // NIF of person who signed
+  fnmtCertIssuer?: string; // e.g. "FNMT-RCM / AC Representación"
+  fnmtCertSerial?: string; // Serial number of FNMT digital certificate
+  fnmtHash?: string; // SHA-256 digital signature hash
+  signatureType?: 'fnmt' | 'manual' | 'both';
 }
 
 export interface RCDUser {
