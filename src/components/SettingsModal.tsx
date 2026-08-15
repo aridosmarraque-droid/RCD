@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Database, MessageSquare, Check, Copy, AlertTriangle, Save, Send, Sparkles, Server, Mail } from 'lucide-react';
+import { X, Database, MessageSquare, Check, Copy, AlertTriangle, Save, Send, Sparkles, Server, Mail, RefreshCw } from 'lucide-react';
 import { SupabaseService } from '../services/supabaseClient';
 import { UltramsgService } from '../services/ultramsgService';
 import { EmailService } from '../services/emailService';
+import { RCDService } from '../services/rcdStorage';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -61,6 +62,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     setSupabaseSaved(true);
     setTimeout(() => setSupabaseSaved(false), 3000);
     onDataChanged();
+  };
+
+  const handlePurgeAndResync = () => {
+    RCDService.clearAllData();
+    onDataChanged();
+    setSupabaseSaved(true);
+    setTimeout(() => setSupabaseSaved(false), 3000);
   };
 
   const handleSaveUltramsg = (e: React.FormEvent) => {
@@ -309,19 +317,31 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
                   />
                 </div>
 
-                <div className="flex items-center justify-between pt-2">
-                  <button
-                    type="submit"
-                    className="flex items-center space-x-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs transition"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>Guardar y Conectar Supabase</span>
-                  </button>
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="submit"
+                      className="flex items-center space-x-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs transition shadow-md shadow-emerald-500/20"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>Guardar y Conectar Supabase</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handlePurgeAndResync}
+                      title="Limpia la caché del navegador y recarga los datos directamente desde Supabase"
+                      className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 font-semibold px-3 py-2 rounded-lg text-xs transition"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Limpiar Caché y Resincronizar</span>
+                    </button>
+                  </div>
 
                   {supabaseSaved && (
                     <span className="text-xs text-emerald-400 font-bold flex items-center space-x-1">
                       <Check className="w-4 h-4" />
-                      <span>¡Credenciales guardadas!</span>
+                      <span>¡Sincronizado con Supabase!</span>
                     </span>
                   )}
                 </div>
