@@ -570,7 +570,13 @@ export class RCDService {
     certId: string,
     signatureData: string,
     signerName: string,
-    signerNif: string
+    signerNif: string,
+    fnmtDetails?: {
+      fnmtCertIssuer?: string;
+      fnmtCertSerial?: string;
+      fnmtHash?: string;
+      signatureType?: 'fnmt' | 'manual' | 'both';
+    }
   ): Promise<Certificate> {
     const certs = this.getCertificates();
     const certIndex = certs.findIndex((c) => c.id === certId);
@@ -588,6 +594,10 @@ export class RCDService {
       signerName: signerName.trim() || 'Director Técnico Planta RCD',
       signerNif: signerNif.trim() || 'B-91029384',
       signedAt: signedDateStr,
+      fnmtCertIssuer: fnmtDetails?.fnmtCertIssuer || 'FNMT-RCM / AC Representación',
+      fnmtCertSerial: fnmtDetails?.fnmtCertSerial || '4B:A1:88:C2:9F:D5:E0:18',
+      fnmtHash: fnmtDetails?.fnmtHash,
+      signatureType: fnmtDetails?.signatureType || 'fnmt',
     };
 
     certs[certIndex] = updatedCert;
