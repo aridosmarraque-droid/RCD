@@ -575,7 +575,9 @@ export class RCDService {
       fnmtCertIssuer?: string;
       fnmtCertSerial?: string;
       fnmtHash?: string;
-      signatureType?: 'fnmt' | 'manual' | 'both';
+      signatureType?: 'fnmt' | 'manual' | 'both' | 'acrobat_pades';
+      signedPdfData?: string;
+      signedPdfFileName?: string;
     }
   ): Promise<Certificate> {
     const certs = this.getCertificates();
@@ -597,7 +599,9 @@ export class RCDService {
       fnmtCertIssuer: fnmtDetails?.fnmtCertIssuer || 'FNMT-RCM / AC Representación',
       fnmtCertSerial: fnmtDetails?.fnmtCertSerial || '4B:A1:88:C2:9F:D5:E0:18',
       fnmtHash: fnmtDetails?.fnmtHash,
-      signatureType: fnmtDetails?.signatureType || 'fnmt',
+      signatureType: fnmtDetails?.signatureType || (fnmtDetails?.signedPdfData ? 'acrobat_pades' : 'fnmt'),
+      signedPdfData: fnmtDetails?.signedPdfData,
+      signedPdfFileName: fnmtDetails?.signedPdfFileName,
     };
 
     certs[certIndex] = updatedCert;
@@ -625,6 +629,28 @@ export class RCDService {
     });
 
     return updatedCert;
+  }
+
+  static async uploadSignedPdfCertificate(
+    certId: string,
+    signedPdfData: string,
+    signedPdfFileName: string,
+    signerName?: string,
+    signerNif?: string
+  ): Promise<Certificate> {
+    return this.signCertificate(
+      certId,
+      '',
+      signerName || 'Dirección Técnica / Apoderado (Firma Digital FNMT Acrobat)',
+      signerNif || 'B-91029384',
+      {
+        fnmtCertIssuer: 'Fábrica Nacional de Moneda y Timbre (FNMT-RCM) - Documento PAdES',
+        fnmtCertSerial: 'Firma Acrobat / AutoFirma',
+        signatureType: 'acrobat_pades',
+        signedPdfData,
+        signedPdfFileName,
+      }
+    );
   }
 
   // ===============================================
