@@ -171,7 +171,11 @@ CREATE TABLE IF NOT EXISTS public.rcd_certificates (
     rcd_total_tons NUMERIC(10,2) NOT NULL DEFAULT 0.00,
     rcd_issuer_name TEXT,
     rcd_verification_code TEXT NOT NULL,
-    rcd_status TEXT DEFAULT 'Emitido',
+    rcd_status TEXT DEFAULT 'Pendiente de Firma',
+    rcd_signature_data TEXT,
+    rcd_signed_at TEXT,
+    rcd_signer_name TEXT,
+    rcd_signer_nif TEXT,
     rcd_created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
