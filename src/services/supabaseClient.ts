@@ -188,6 +188,8 @@ export class SupabaseService {
       rcd_fnmt_cert_serial: cert.fnmtCertSerial || null,
       rcd_fnmt_hash: cert.fnmtHash || null,
       rcd_signature_type: cert.signatureType || 'fnmt',
+      rcd_signed_pdf_data: cert.signedPdfData || null,
+      rcd_signed_pdf_filename: cert.signedPdfFileName || null,
       rcd_created_at: cert.issueDate ? `${cert.issueDate}T00:00:00.000Z` : new Date().toISOString(),
     };
   }
@@ -218,6 +220,8 @@ export class SupabaseService {
       fnmtCertSerial: row.rcd_fnmt_cert_serial || undefined,
       fnmtHash: row.rcd_fnmt_hash || undefined,
       signatureType: row.rcd_signature_type || undefined,
+      signedPdfData: row.rcd_signed_pdf_data || undefined,
+      signedPdfFileName: row.rcd_signed_pdf_filename || undefined,
     };
   }
 
