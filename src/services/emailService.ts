@@ -43,13 +43,44 @@ export class EmailService {
     subject: string;
     htmlBody: string;
     textBody: string;
-  }): Promise<{ success: boolean; error?: string }> {
+  }): Promise<{ success: boolean; error?: string; message?: string }> {
     const { webhookUrl, apiKey, fromAddress } = this.getConfig();
 
     if (!options.to || !options.to.includes('@')) {
       return { success: false, error: 'Dirección de correo electrónico no válida' };
     }
 
+    // Intento 1: Llamar al endpoint backend proxy /api/send-email (evita bloqueos de CORS en el navegador)
+    try {
+      const serverResponse = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: options.to,
+          from: fromAddress,
+          subject: options.subject,
+          html: options.htmlBody,
+          text: options.textBody,
+          webhookUrl,
+          apiKey,
+        }),
+      });
+
+      if (serverResponse.ok) {
+        const data = await serverResponse.json();
+        console.log('[EmailService] Correo procesado vía backend:', data);
+        return { success: true, message: data.message };
+      } else {
+        const errData = await serverResponse.json().catch(() => ({ error: serverResponse.statusText }));
+        console.warn('[EmailService] Aviso desde /api/send-email:', errData);
+      }
+    } catch (serverErr) {
+      console.warn('[EmailService] Fallback frontend por error al conectar con /api/send-email:', serverErr);
+    }
+
+    // Intento 2: Fallback directo desde el navegador si el backend no respondió
     try {
       if (webhookUrl) {
         const response = await fetch(webhookUrl, {
@@ -60,10 +91,13 @@ export class EmailService {
           },
           body: JSON.stringify({
             to: options.to,
+            email: options.to,
+            recipient: options.to,
             from: fromAddress,
             subject: options.subject,
             html: options.htmlBody,
             text: options.textBody,
+            message: options.textBody,
           }),
         });
 
@@ -75,8 +109,8 @@ export class EmailService {
         }
       }
 
-      // Default client-side notification dispatch
-      console.log(`[EmailService] Notificación por correo enviada a: ${options.to}`);
+      // Notificación simulada por consola
+      console.log(`[EmailService] Notificación por correo registrada para: ${options.to}`);
       return { success: true };
     } catch (err: any) {
       console.warn('Aviso en el servicio de correo:', err);
