@@ -362,13 +362,13 @@ export class SupabaseService {
 
     try {
       const row = this.mapCertificateToDB(cert);
-      const { error } = await supabase.from('rcd_certificates').insert(row);
+      const { error } = await supabase.from('rcd_certificates').upsert(row, { onConflict: 'rcd_id' });
 
       if (error) {
-        console.warn('Notice inserting rcd_certificates into Supabase:', error.message || error);
+        console.warn('Notice upserting rcd_certificates into Supabase:', error.message || error);
       }
     } catch (err) {
-      console.warn('Notice inserting rcd_certificates into Supabase:', err);
+      console.warn('Notice upserting rcd_certificates into Supabase:', err);
     }
   }
 
