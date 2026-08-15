@@ -63,15 +63,36 @@ export const OFFICIAL_WASTE_TYPES: WasteType[] = [
 ];
 
 const STORAGE_KEYS = {
-  CLIENTS: 'rcd_app_clients_v3',
-  ALBARANES: 'rcd_app_albaranes_v3',
-  CERTIFICATES: 'rcd_app_certificates_v3',
-  WASTE_TYPES: 'rcd_app_waste_types_v3',
-  USERS: 'rcd_app_users_v3',
-  CURRENT_USER: 'rcd_app_current_user_v3',
+  CLIENTS: 'rcd_app_clients_v4',
+  ALBARANES: 'rcd_app_albaranes_v4',
+  CERTIFICATES: 'rcd_app_certificates_v4',
+  WASTE_TYPES: 'rcd_app_waste_types_v4',
+  USERS: 'rcd_app_users_v4',
+  CURRENT_USER: 'rcd_app_current_user_v4',
 };
 
-// DEMO DATA CLEARED AS REQUESTED BY USER
+// Purge any legacy demo or older cache versions from localStorage
+try {
+  const legacyKeys = [
+    'rcd_app_albaranes_v1',
+    'rcd_app_albaranes_v2',
+    'rcd_app_albaranes_v3',
+    'rcd_app_clients_v1',
+    'rcd_app_clients_v2',
+    'rcd_app_clients_v3',
+    'rcd_app_certificates_v1',
+    'rcd_app_certificates_v2',
+    'rcd_app_certificates_v3',
+    'rcd_albaranes_demo',
+  ];
+  for (const k of legacyKeys) {
+    localStorage.removeItem(k);
+  }
+} catch {
+  // ignore in non-browser environments
+}
+
+// INITIAL DATA IS EMPTY - DATA MUST COME FROM SUPABASE OR BE CREATED IN APP
 const INITIAL_CLIENTS: Client[] = [];
 const INITIAL_ALBARANES: Albaran[] = [];
 const INITIAL_CERTIFICATES: Certificate[] = [];
@@ -124,7 +145,7 @@ export class RCDService {
     if (SupabaseService.isConfigured()) {
       try {
         const remoteClients = await SupabaseService.fetchClients();
-        if (remoteClients) {
+        if (remoteClients !== null && Array.isArray(remoteClients)) {
           this.saveClientsLocal(remoteClients);
           return remoteClients;
         }
@@ -245,15 +266,8 @@ export class RCDService {
     if (SupabaseService.isConfigured()) {
       try {
         const remoteAlbaranes = await SupabaseService.fetchAlbaranes();
-        if (remoteAlbaranes && Array.isArray(remoteAlbaranes)) {
-          // Merge local albaranes if remote is empty or missing newly created ones
-          const localAlbaranes = this.getAlbaranes();
-          const remoteMap = new Map(remoteAlbaranes.map((a) => [a.id, a]));
-          for (const localAlb of localAlbaranes) {
-            if (!remoteMap.has(localAlb.id)) {
-              remoteAlbaranes.push(localAlb);
-            }
-          }
+        if (remoteAlbaranes !== null && Array.isArray(remoteAlbaranes)) {
+          // Strictly mirror Supabase database: if Supabase has 0 albaranes, local becomes 0 albaranes
           this.saveAlbaranesLocal(remoteAlbaranes);
           return remoteAlbaranes;
         }
@@ -394,7 +408,7 @@ export class RCDService {
     if (SupabaseService.isConfigured()) {
       try {
         const remoteCerts = await SupabaseService.fetchCertificates();
-        if (remoteCerts) {
+        if (remoteCerts !== null && Array.isArray(remoteCerts)) {
           this.saveCertificatesLocal(remoteCerts);
           return remoteCerts;
         }
