@@ -20,7 +20,7 @@ import {
 import { Albaran, Certificate, Client } from '../types/rcd';
 import { PhotoLightboxModal } from './PhotoLightboxModal';
 import { IssueCertificateModal } from './IssueCertificateModal';
-import { openPrintableCertificate } from '../utils/certificatePdf';
+import { openPrintableCertificate, openOrDownloadCertificate, downloadSignedPdfFile } from '../utils/certificatePdf';
 
 interface ClientPortalViewProps {
   client: Client;
@@ -385,24 +385,37 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                       <div className="bg-amber-950/40 border border-amber-800/60 p-2.5 rounded-xl text-[11px] text-amber-300 flex items-start space-x-2">
                         <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                         <span>
-                          El certificado estará disponible firmado digitalmente en breve. Se ha avisado al responsable para su firma.
+                          El certificado estará disponible firmado digitalmente en breve. Se ha avisado al responsable para su firma con certificado FNMT.
                         </span>
                       </div>
                     ) : (
-                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-[11px] text-slate-400">
-                        Firmado por: <strong className="text-slate-200">{cert.signerName}</strong> ({cert.signedAt})
+                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-[11px] text-slate-400 flex flex-col gap-0.5">
+                        <div>Firmado por: <strong className="text-slate-200">{cert.signerName}</strong></div>
+                        <div className="text-[10px] text-emerald-400 font-semibold">
+                          {cert.signedPdfData ? '✓ Documento Oficial Firmado (Acrobat / FNMT)' : '✓ Sello Electrónico FNMT'}
+                        </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Print PDF Button */}
-                  <button
-                    onClick={() => openPrintableCertificate(cert)}
-                    className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition"
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span>Ver Documento Certificado PDF</span>
-                  </button>
+                  {/* Print / Download PDF Button */}
+                  {cert.signedPdfData ? (
+                    <button
+                      onClick={() => downloadSignedPdfFile(cert)}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition shadow-emerald-900/30"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Descargar Certificado Firmado (PDF Oficial FNMT)</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => openPrintableCertificate(cert)}
+                      className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>{cert.status === 'Pendiente de Firma' ? 'Ver Borrador de Certificado' : 'Ver / Imprimir Certificado PDF'}</span>
+                    </button>
+                  )}
                 </div>
               ))
             )}
