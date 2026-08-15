@@ -24,7 +24,7 @@ import { Albaran, Certificate, Client, RCDUser, WasteType } from '../types/rcd';
 import { ClientsDirectoryView } from './ClientsDirectoryView';
 import { UsersManagementView } from './UsersManagementView';
 import { PhotoLightboxModal } from './PhotoLightboxModal';
-import { openPrintableCertificate } from '../utils/certificatePdf';
+import { openPrintableCertificate, openOrDownloadCertificate, downloadSignedPdfFile } from '../utils/certificatePdf';
 import { IssueCertificateModal } from './IssueCertificateModal';
 import { WasteTypesConfigModal } from './WasteTypesConfigModal';
 import { SignCertificateModal } from './SignCertificateModal';
@@ -633,9 +633,13 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                       <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold px-2.5 py-1 rounded-full">
                         ⏳ Pendiente de Firma
                       </span>
+                    ) : cert.signedPdfData ? (
+                      <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center space-x-1">
+                        <span>✓ PDF Firmado con Acrobat (FNMT)</span>
+                      </span>
                     ) : (
                       <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold px-2.5 py-1 rounded-full">
-                        ✓ Firmado Digitalmente
+                        ✓ Sello Digital Web
                       </span>
                     )}
                   </div>
@@ -649,32 +653,64 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                       Total Certificado: {cert.totalTons.toFixed(2)} Toneladas ({cert.albaranIds.length} albaranes)
                     </div>
                     {cert.signedAt && (
-                      <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 mt-2">
-                        Firmado por: <strong className="text-slate-200">{cert.signerName}</strong> ({cert.signedAt})
+                      <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 mt-2 flex flex-col gap-0.5">
+                        <div>Firmado por: <strong className="text-slate-200">{cert.signerName}</strong></div>
+                        <div className="text-[10px] text-slate-500">{cert.signedAt} {cert.signedPdfFileName ? `• Archivo: ${cert.signedPdfFileName}` : ''}</div>
                       </div>
                     )}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {cert.status === 'Pendiente de Firma' || !cert.signedAt ? (
-                      <button
-                        onClick={() => setSelectedCertToSign(cert)}
-                        className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition"
-                      >
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>✍️ Firmar Digitalmente</span>
-                      </button>
-                    ) : null}
-
-                    <button
-                      onClick={() => openPrintableCertificate(cert)}
-                      className={`w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-2 transition ${
-                        cert.status === 'Pendiente de Firma' || !cert.signedAt ? '' : 'col-span-2'
-                      }`}
-                    >
-                      <Printer className="w-4 h-4" />
-                      <span>Imprimir / Ver PDF</span>
-                    </button>
+                      <>
+                        <button
+                          onClick={() => setSelectedCertToSign(cert)}
+                          className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition"
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                          <span>✍️ Firmar / Subir PDF</span>
+                        </button>
+                        <button
+                          onClick={() => openPrintableCertificate(cert)}
+                          className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-2 transition border border-slate-700"
+                        >
+                          <Printer className="w-4 h-4" />
+                          <span>Ver Borrador</span>
+                        </button>
+                      </>
+                    ) : cert.signedPdfData ? (
+                      <>
+                        <button
+                          onClick={() => downloadSignedPdfFile(cert)}
+                          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition"
+                        >
+                          <Printer className="w-4 h-4" />
+                          <span>📥 Descargar PDF Firmado (Acrobat)</span>
+                        </button>
+                        <button
+                          onClick={() => setSelectedCertToSign(cert)}
+                          className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition border border-slate-700"
+                        >
+                          <span>🔄 Sustituir PDF</span>
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => openPrintableCertificate(cert)}
+                          className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-2 transition"
+                        >
+                          <Printer className="w-4 h-4" />
+                          <span>Imprimir / Ver PDF</span>
+                        </button>
+                        <button
+                          onClick={() => setSelectedCertToSign(cert)}
+                          className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition border border-slate-700"
+                        >
+                          <span>✍️ Subir PDF Acrobat</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
