@@ -19,6 +19,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [supabaseAnonKey, setSupabaseAnonKey] = useState('');
   const [supabaseSaved, setSupabaseSaved] = useState(false);
   const [sqlCopied, setSqlCopied] = useState(false);
+  const [migrationCopied, setMigrationCopied] = useState(false);
 
   // Ultramsg state
   const [instanceId, setInstanceId] = useState('');
@@ -101,21 +102,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
 
   const handleSendTestEmail = async () => {
     if (!testEmailAddress) return;
-    setTestEmailStatus({ loading: true });
+    setTestEmailStatus({ loading: true, message: 'Enviando petición a través del servidor...' });
     const res = await EmailService.sendEmail({
       to: testEmailAddress,
       subject: '🧪 [Planta RCD] Prueba de Notificación por Correo Electrónico',
-      textBody: 'Prueba de integración con el servicio de Correo Electrónico RCD completada con éxito.',
-      htmlBody: '<h3>🧪 Planta de Residuos RCD</h3><p>Prueba de integración con el servicio de Correo Electrónico RCD completada con éxito. ¡Las notificaciones automáticas de albaranes están listas!</p>',
+      textBody: 'Prueba de integración con el servicio de Correo Electrónico / Webhook RCD completada con éxito.',
+      htmlBody: '<h3>🧪 Planta de Residuos RCD</h3><p>Prueba de integración con el servicio de Correo Electrónico / Webhook RCD completada con éxito. ¡Las notificaciones automáticas de albaranes y certificados están listas!</p>',
     });
     if (res.success) {
-      setTestEmailStatus({ loading: false, success: true, message: `¡Notificación de correo enviada a ${testEmailAddress}!` });
+      setTestEmailStatus({ loading: false, success: true, message: res.message || `¡Notificación de correo enviada con éxito a ${testEmailAddress}!` });
     } else {
       setTestEmailStatus({ loading: false, success: false, message: `Error: ${res.error}` });
     }
   };
 
-  const sqlDDLCode = `-- SQL para crear las tablas RCD en Supabase (Todos los campos con rcd_)
+  const sqlMigrationCode = `-- ========================================================
+-- SCRIPT DE ACTUALIZACIÓN / MIGRACIÓN RÁPIDA PARA SUPABASE
+-- (Ejecute esto si ya tenía creadas las tablas anteriormente)
+-- ========================================================
+ALTER TABLE IF EXISTS public.rcd_certificates
+    ADD COLUMN IF NOT EXISTS rcd_status TEXT DEFAULT 'Pendiente de Firma',
+    ADD COLUMN IF NOT EXISTS rcd_signature_data TEXT,
+    ADD COLUMN IF NOT EXISTS rcd_signed_at TEXT,
+    ADD COLUMN IF NOT EXISTS rcd_signer_name TEXT,
+    ADD COLUMN IF NOT EXISTS rcd_signer_nif TEXT,
+    ADD COLUMN IF NOT EXISTS rcd_fnmt_cert_issuer TEXT,
+    ADD COLUMN IF NOT EXISTS rcd_fnmt_cert_serial TEXT,
+    ADD COLUMN IF NOT EXISTS rcd_fnmt_hash TEXT,
+    ADD COLUMN IF NOT EXISTS rcd_signature_type TEXT;`;
+
+  const sqlDDLCode = `-- ========================================================
+-- SQL COMPLETO PARA CREAR LAS TABLAS RCD DESDE CERO
+-- ========================================================
 CREATE TABLE IF NOT EXISTS public.rcd_clients (
     rcd_id TEXT PRIMARY KEY,
     rcd_code TEXT NOT NULL UNIQUE,
@@ -176,6 +194,10 @@ CREATE TABLE IF NOT EXISTS public.rcd_certificates (
     rcd_signed_at TEXT,
     rcd_signer_name TEXT,
     rcd_signer_nif TEXT,
+    rcd_fnmt_cert_issuer TEXT,
+    rcd_fnmt_cert_serial TEXT,
+    rcd_fnmt_hash TEXT,
+    rcd_signature_type TEXT,
     rcd_created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -203,6 +225,12 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
     navigator.clipboard.writeText(sqlDDLCode);
     setSqlCopied(true);
     setTimeout(() => setSqlCopied(false), 3000);
+  };
+
+  const copyMigrationToClipboard = () => {
+    navigator.clipboard.writeText(sqlMigrationCode);
+    setMigrationCopied(true);
+    setTimeout(() => setMigrationCopied(false), 3000);
   };
 
   return (
@@ -351,23 +379,49 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
                 </div>
               </form>
 
+              {/* SQL Migration Box */}
+              <div className="bg-slate-950 border border-emerald-500/30 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center space-x-1.5">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Script de Actualización / Migración Rápida</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      Ejecute este comando si ya tenía tablas creadas para añadir las nuevas columnas de <strong>Firma Digital FNMT</strong> sin perder datos.
+                    </p>
+                  </div>
+                  <button
+                    onClick={copyMigrationToClipboard}
+                    className="flex items-center space-x-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-xs text-emerald-300 border border-emerald-500/40 px-3 py-1.5 rounded-lg transition shrink-0"
+                  >
+                    {migrationCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    <span>{migrationCopied ? '¡Copiado!' : 'Copiar Migración'}</span>
+                  </button>
+                </div>
+
+                <pre className="bg-slate-900 border border-slate-800 rounded-lg p-3 text-[11px] font-mono text-emerald-300 max-h-36 overflow-y-auto whitespace-pre-wrap select-all">
+                  {sqlMigrationCode}
+                </pre>
+              </div>
+
               {/* SQL DDL Box */}
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">Código SQL para crear la BBDD en Supabase</h4>
-                    <p className="text-[11px] text-slate-400">Copie este código y ejecútelo en el <strong>SQL Editor</strong> de su panel de Supabase.</p>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">Código SQL Completo (Creación desde cero)</h4>
+                    <p className="text-[11px] text-slate-400">Copie este código y ejecútelo en el <strong>SQL Editor</strong> de Supabase si instala la BBDD por primera vez.</p>
                   </div>
                   <button
                     onClick={copySqlToClipboard}
-                    className="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-emerald-400 border border-slate-700 px-3 py-1.5 rounded-lg transition"
+                    className="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg transition shrink-0"
                   >
                     {sqlCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                     <span>{sqlCopied ? '¡Copiado!' : 'Copiar SQL'}</span>
                   </button>
                 </div>
 
-                <pre className="bg-slate-900 border border-slate-800 rounded-lg p-3 text-[11px] font-mono text-emerald-300 max-h-48 overflow-y-auto whitespace-pre-wrap select-all">
+                <pre className="bg-slate-900 border border-slate-800 rounded-lg p-3 text-[11px] font-mono text-slate-300 max-h-48 overflow-y-auto whitespace-pre-wrap select-all">
                   {sqlDDLCode}
                 </pre>
               </div>
