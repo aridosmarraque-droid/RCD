@@ -18,6 +18,7 @@ import { Albaran, OCRScanResult, WasteType } from '../types/rcd';
 import { OFFICIAL_WASTE_TYPES, RCDService } from '../services/rcdStorage';
 import { watermarkTruckPhoto } from '../utils/photoWatermark';
 import { scanAlbaranWithGemini } from '../services/geminiOcr';
+import { compressImage, getBase64SizeKB } from '../utils/imageCompressor';
 
 interface OperatorMobileViewProps {
   onAlbaranCreated: (albaran: Albaran) => void;
@@ -58,7 +59,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
   // Verification modal state after scanning ticket
   const [showVerificationModal, setShowVerificationModal] = useState(false);
 
-  // Handle image upload / camera capture for SAP ticket OCR
+  // Handle image upload / camera capture for SAP ticket OCR with instant compression
   const handleAlbaranImageSelected = async (file: File) => {
     // Clear previous scan values so data from old tickets never persists
     setNumAlbaran('');
@@ -66,15 +67,27 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     setClientName('');
     setQuantityTons(0);
     setLicensePlate('');
-    setScanNotes('Iniciando lectura OCR...');
+    setScanNotes('Optimizando y analizando albarán...');
+    setIsScanning(true);
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const base64 = e.target?.result as string;
-      setAlbaranPhoto(base64);
-      await runGeminiOCR(base64, file.type || 'image/jpeg');
-    };
-    reader.readAsDataURL(file);
+    try {
+      // 1. Compress high-resolution camera photo (e.g. 10MB -> ~120KB)
+      const compressedBase64 = await compressImage(file, { maxDimension: 1200, quality: 0.78 });
+      setAlbaranPhoto(compressedBase64);
+
+      // 2. Send lightweight compressed image to OCR
+      await runGeminiOCR(compressedBase64, 'image/jpeg');
+    } catch (err) {
+      console.warn('Notice processing albaran photo:', err);
+      // Fallback
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64 = e.target?.result as string;
+        setAlbaranPhoto(base64);
+        await runGeminiOCR(base64, file.type || 'image/jpeg');
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   // State for unrecognized waste type & client & duplicate prompts
@@ -196,42 +209,80 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     }
   };
 
-  // Handle Truck Photo capture & Watermark
+  // Handle Truck Photo capture & Watermark with automatic compression
   const handleTruckPhotoSelected = async (file: File) => {
     setIsProcessingTruckPhoto(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const rawBase64 = e.target?.result as string;
-      const stamped = await watermarkTruckPhoto(rawBase64, {
+    try {
+      // 1. Compress raw camera photo (e.g. 10MB -> ~120KB)
+      const compressedBase64 = await compressImage(file, { maxDimension: 1200, quality: 0.78 });
+
+      // 2. Apply digital plant watermark on the optimized image
+      const stamped = await watermarkTruckPhoto(compressedBase64, {
         title: 'CAMIÓN EN PLANTA - REGISTRO BÁSCULA',
         licensePlate: licensePlate,
         plantZone: 'Planta Báscula 1 - Entrada',
         dateStr,
         timeStr,
+        maxDimension: 1200,
       });
       setTruckPhoto(stamped);
+    } catch (err) {
+      console.warn('Error processing truck photo:', err);
+      // Fallback
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const rawBase64 = e.target?.result as string;
+        const stamped = await watermarkTruckPhoto(rawBase64, {
+          title: 'CAMIÓN EN PLANTA - REGISTRO BÁSCULA',
+          licensePlate: licensePlate,
+          plantZone: 'Planta Báscula 1 - Entrada',
+          dateStr,
+          timeStr,
+        });
+        setTruckPhoto(stamped);
+      };
+      reader.readAsDataURL(file);
+    } finally {
       setIsProcessingTruckPhoto(false);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
-  // Handle Unload Photo capture & Watermark
+  // Handle Unload Photo capture & Watermark with automatic compression
   const handleUnloadPhotoSelected = async (file: File) => {
     setIsProcessingUnloadPhoto(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const rawBase64 = e.target?.result as string;
-      const stamped = await watermarkTruckPhoto(rawBase64, {
+    try {
+      // 1. Compress raw camera photo (e.g. 10MB -> ~120KB)
+      const compressedBase64 = await compressImage(file, { maxDimension: 1200, quality: 0.78 });
+
+      // 2. Apply digital plant watermark on the optimized image
+      const stamped = await watermarkTruckPhoto(compressedBase64, {
         title: 'DESCARGA DE RESIDUO RCD',
         licensePlate: licensePlate,
         plantZone: plantZone,
         dateStr,
         timeStr,
+        maxDimension: 1200,
       });
       setUnloadPhoto(stamped);
+    } catch (err) {
+      console.warn('Error processing unload photo:', err);
+      // Fallback
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const rawBase64 = e.target?.result as string;
+        const stamped = await watermarkTruckPhoto(rawBase64, {
+          title: 'DESCARGA DE RESIDUO RCD',
+          licensePlate: licensePlate,
+          plantZone: plantZone,
+          dateStr,
+          timeStr,
+        });
+        setUnloadPhoto(stamped);
+      };
+      reader.readAsDataURL(file);
+    } finally {
       setIsProcessingUnloadPhoto(false);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   // Generate fallback placeholder photo with watermark if user hasn't uploaded a real camera photo
@@ -688,9 +739,14 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                   alt="Foto del camión con marca de agua"
                   className="w-full h-52 object-cover rounded-lg border border-slate-800"
                 />
-                <div className="mt-2 text-xs text-emerald-400 font-semibold flex items-center space-x-1">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>Foto del camión verificada y estampada electrónicamente.</span>
+                <div className="mt-2 text-xs text-emerald-400 font-semibold flex items-center justify-between">
+                  <span className="flex items-center space-x-1">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Foto del camión verificada y sellada.</span>
+                  </span>
+                  <span className="bg-emerald-950 text-emerald-300 text-[10px] px-2 py-0.5 rounded border border-emerald-800 font-mono">
+                    {getBase64SizeKB(truckPhoto)} KB (Optimizado)
+                  </span>
                 </div>
               </div>
             )}
@@ -780,9 +836,14 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                   alt="Foto de la descarga"
                   className="w-full h-52 object-cover rounded-lg border border-slate-800"
                 />
-                <div className="mt-2 text-xs text-emerald-400 font-semibold flex items-center space-x-1">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>Foto de descarga registrada correctamente.</span>
+                <div className="mt-2 text-xs text-emerald-400 font-semibold flex items-center justify-between">
+                  <span className="flex items-center space-x-1">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Foto de descarga registrada correctamente.</span>
+                  </span>
+                  <span className="bg-emerald-950 text-emerald-300 text-[10px] px-2 py-0.5 rounded border border-emerald-800 font-mono">
+                    {getBase64SizeKB(unloadPhoto)} KB (Optimizado)
+                  </span>
                 </div>
               </div>
             )}
