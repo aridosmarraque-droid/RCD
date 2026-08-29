@@ -33,8 +33,8 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
   const [numAlbaran, setNumAlbaran] = useState('');
   const [clientCode, setClientCode] = useState('');
   const [clientName, setClientName] = useState('');
-  const [wasteTypeCode, setWasteTypeCode] = useState('17 01 01');
-  const [wasteTypeName, setWasteTypeName] = useState('Hormigón y Piedra (Escombro Limpio)');
+  const [wasteTypeCode, setWasteTypeCode] = useState('');
+  const [wasteTypeName, setWasteTypeName] = useState('');
   const [quantityTons, setQuantityTons] = useState<number>(0);
   const [licensePlate, setLicensePlate] = useState('');
   const [dateStr, setDateStr] = useState(new Date().toISOString().split('T')[0]);
@@ -124,7 +124,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
         if (codeMatch) {
           const extractedC = (codeMatch[1] || codeMatch[2] || codeMatch[3] || '').trim();
           const restN = (codeMatch[4] || '').trim();
-          if (extractedC && (!cCode || cCode === 'C-00100' || cCode.includes('['))) {
+          if (extractedC && (!cCode || cCode.includes('['))) {
             cCode = extractedC.toUpperCase();
           }
           if (restN && restN.length >= 2) {
@@ -135,7 +135,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
         cCode = cCode.replace(/^\[|\]$/g, '').trim();
 
         setClientName(cName);
-        setClientCode(cCode || 'C-00100');
+        setClientCode(cCode);
 
         // Check if client is registered in system directory
         if (cName && !RCDService.isClientRegistered(cName, cCode)) {
@@ -356,11 +356,11 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
         numAlbaran: numAlbaran.trim().toUpperCase(),
         clientId: '',
         clientName: cleanName,
-        clientCode: cleanCode || 'C-00100',
+        clientCode: cleanCode || (cleanName ? `C-${cleanName.substring(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, '')}` : 'C-GEN'),
         date: dateStr,
         time: timeStr,
-        wasteTypeCode: wasteTypeCode,
-        wasteTypeName: wasteTypeName,
+        wasteTypeCode: wasteTypeCode || '17 01 01',
+        wasteTypeName: wasteTypeName || 'Residuo RCD',
         quantityTons: Number(quantityTons),
         licensePlate: licensePlate.trim().toUpperCase(),
         albaranPhotoUrl: albaranPhoto || undefined,
@@ -625,14 +625,17 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                   }}
                   className="w-full bg-slate-950 text-white font-medium text-xs sm:text-sm border border-slate-800 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none"
                 >
+                  {availableWasteTypes.length === 0 && !wasteTypeCode && (
+                    <option value="">-- Sin tipos de residuo en base de datos --</option>
+                  )}
                   {availableWasteTypes.map((wt: WasteType) => (
                     <option key={wt.code} value={wt.code}>
                       LER {wt.code} - {wt.name} ({wt.pricePerTon} €/t)
                     </option>
                   ))}
-                  {!availableWasteTypes.some((w) => w.code === wasteTypeCode) && (
+                  {wasteTypeCode && !availableWasteTypes.some((w) => w.code === wasteTypeCode) && (
                     <option value={wasteTypeCode}>
-                      LER {wasteTypeCode} - {wasteTypeName}
+                      LER {wasteTypeCode} - {wasteTypeName || 'Residuo'}
                     </option>
                   )}
                 </select>
