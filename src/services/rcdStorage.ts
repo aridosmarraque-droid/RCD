@@ -2,6 +2,7 @@ import { Albaran, Certificate, Client, RCDUser, WasteType } from '../types/rcd';
 import { SupabaseService } from './supabaseClient';
 import { UltramsgService } from './ultramsgService';
 import { EmailService } from './emailService';
+import { compressImage } from '../utils/imageCompressor';
 
 export const OFFICIAL_WASTE_TYPES: WasteType[] = [
   {
@@ -317,6 +318,35 @@ export class RCDService {
       throw new Error('Pongase en contacto con la oficina, albaran SAP ya registrado.');
     }
 
+    // Ensure photos are safely compressed (under 300KB) if raw camera strings were passed
+    let albaranPhotoUrl = newAlbaran.albaranPhotoUrl;
+    let truckPhotoUrl = newAlbaran.truckPhotoUrl;
+    let unloadPhotoUrl = newAlbaran.unloadPhotoUrl;
+
+    if (albaranPhotoUrl && albaranPhotoUrl.length > 500_000) {
+      try {
+        albaranPhotoUrl = await compressImage(albaranPhotoUrl, { maxDimension: 1200, quality: 0.78 });
+      } catch (e) {
+        console.warn('Fallback albaran photo compression:', e);
+      }
+    }
+
+    if (truckPhotoUrl && truckPhotoUrl.length > 500_000) {
+      try {
+        truckPhotoUrl = await compressImage(truckPhotoUrl, { maxDimension: 1200, quality: 0.78 });
+      } catch (e) {
+        console.warn('Fallback truck photo compression:', e);
+      }
+    }
+
+    if (unloadPhotoUrl && unloadPhotoUrl.length > 500_000) {
+      try {
+        unloadPhotoUrl = await compressImage(unloadPhotoUrl, { maxDimension: 1200, quality: 0.78 });
+      } catch (e) {
+        console.warn('Fallback unload photo compression:', e);
+      }
+    }
+
     const albaranes = this.getAlbaranes();
 
     // Ensure client exists
@@ -324,6 +354,9 @@ export class RCDService {
 
     const created: Albaran = {
       ...newAlbaran,
+      albaranPhotoUrl,
+      truckPhotoUrl,
+      unloadPhotoUrl,
       id: `alb-${Date.now()}`,
       clientId: client.id,
       certified: false,
@@ -335,43 +368,71 @@ export class RCDService {
       },
     };
 
-    let mobileSent = false;
-    let emailSent = false;
-
-    // 1. WhatsApp notification via Ultramsg if client has mobile notification enabled
-    if (client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
-      const messageText = `🏭 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha registrado en planta un nuevo albarán de entrega:\n📜 *Nº Albarán:* ${created.numAlbaran}\n📦 *Residuo:* ${created.wasteTypeName} (${created.wasteTypeCode})\n⚖️ *Peso Neto:* ${created.quantityTons} toneladas\n🚚 *Matrícula:* ${created.licensePlate}\n📍 *Zona:* ${created.plantZone}\n📅 *Fecha/Hora:* ${created.date} ${created.time}\n\nGracias por su compromiso con la gestión sostenible de RCD.`;
-
-      const sendResult = await UltramsgService.sendWhatsApp(client.mobile, messageText);
-      if (sendResult.success) {
-        mobileSent = true;
-      }
-    }
-
-    // 2. Email notification via EmailService if client has notifyEmail enabled and an email address
-    if (client.notifyEmail && client.email) {
-      const emailResult = await EmailService.sendAlbaranEmail(client.email, client.name, created);
-      if (emailResult.success) {
-        emailSent = true;
-      }
-    }
-
-    created.notificationsSent = {
-      mobileSent,
-      emailSent,
-      timestamp: new Date().toISOString(),
-    };
-
+    // Save immediately to local storage so operator gets instant confirmation
     albaranes.unshift(created);
     this.saveAlbaranesLocal(albaranes);
 
-    if (SupabaseService.isConfigured()) {
-      try {
-        await SupabaseService.insertAlbaran(created);
-      } catch (err) {
-        console.warn('Notice saving albaran to Supabase:', err);
+    // Run Supabase sync and WhatsApp/Email notifications in a resilient non-blocking manner
+    (async () => {
+      let mobileSent = false;
+      let emailSent = false;
+
+      // 1. WhatsApp notification via Ultramsg if client has mobile notification enabled
+      if (client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
+        try {
+          const messageText = `🏭 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha registrado en planta un nuevo albarán de entrega:\n📜 *Nº Albarán:* ${created.numAlbaran}\n📦 *Residuo:* ${created.wasteTypeName} (${created.wasteTypeCode})\n⚖️ *Peso Neto:* ${created.quantityTons} toneladas\n🚚 *Matrícula:* ${created.licensePlate}\n📍 *Zona:* ${created.plantZone}\n📅 *Fecha/Hora:* ${created.date} ${created.time}\n\nGracias por su compromiso con la gestión sostenible de RCD.`;
+
+          const sendResult = await Promise.race([
+            UltramsgService.sendWhatsApp(client.mobile, messageText),
+            new Promise<{ success: boolean; error: string }>((resolve) =>
+              setTimeout(() => resolve({ success: false, error: 'Timeout de red Ultramsg' }), 6000)
+            ),
+          ]);
+          if (sendResult.success) {
+            mobileSent = true;
+          }
+        } catch (e) {
+          console.warn('Notice sending WhatsApp:', e);
+        }
       }
-    }
+
+      // 2. Email notification via EmailService if client has notifyEmail enabled and an email address
+      if (client.notifyEmail && client.email) {
+        try {
+          const emailResult = await Promise.race([
+            EmailService.sendAlbaranEmail(client.email, client.name, created),
+            new Promise<{ success: boolean; error: string }>((resolve) =>
+              setTimeout(() => resolve({ success: false, error: 'Timeout de red Email' }), 6000)
+            ),
+          ]);
+          if (emailResult.success) {
+            emailSent = true;
+          }
+        } catch (e) {
+          console.warn('Notice sending Email:', e);
+        }
+      }
+
+      created.notificationsSent = {
+        mobileSent,
+        emailSent,
+        timestamp: new Date().toISOString(),
+      };
+
+      // 3. Sync to Supabase
+      if (SupabaseService.isConfigured()) {
+        try {
+          await Promise.race([
+            SupabaseService.insertAlbaran(created),
+            new Promise<void>((_, reject) =>
+              setTimeout(() => reject(new Error('Timeout de sincronización con Supabase (6s)')), 6000)
+            ),
+          ]);
+        } catch (err) {
+          console.warn('Notice saving albaran to Supabase:', err);
+        }
+      }
+    })();
 
     return created;
   }
