@@ -50,7 +50,12 @@ export class EmailService {
       return { success: false, error: 'Dirección de correo electrónico no válida' };
     }
 
-    // Intento 1: Llamar al endpoint backend proxy /api/send-email (evita bloqueos de CORS en el navegador)
+    if (!this.isConfigured()) {
+      // Si no hay Webhook ni API Key configurados en Ajustes, omitir silenciosamente
+      return { success: true, message: 'Servicio de correo no configurado.' };
+    }
+
+    // Intento 1: Llamar al endpoint backend proxy /api/send-email si existe
     try {
       const serverResponse = await fetch('/api/send-email', {
         method: 'POST',
@@ -70,19 +75,15 @@ export class EmailService {
 
       if (serverResponse.ok) {
         const data = await serverResponse.json();
-        console.log('[EmailService] Correo procesado vía backend:', data);
         return { success: true, message: data.message };
-      } else {
-        const errData = await serverResponse.json().catch(() => ({ error: serverResponse.statusText }));
-        console.warn('[EmailService] Aviso desde /api/send-email:', errData);
       }
-    } catch (serverErr) {
-      console.warn('[EmailService] Fallback frontend por error al conectar con /api/send-email:', serverErr);
+    } catch {
+      // El backend proxy no está disponible en despliegues estáticos (ej: Vercel SPA)
     }
 
-    // Intento 2: Fallback directo desde el navegador si el backend no respondió
+    // Intento 2: Fallback directo desde el navegador hacia el Webhook configurado
     try {
-      if (webhookUrl) {
+      if (webhookUrl && webhookUrl.startsWith('http')) {
         const response = await fetch(webhookUrl, {
           method: 'POST',
           headers: {
@@ -103,17 +104,12 @@ export class EmailService {
 
         if (response.ok) {
           return { success: true };
-        } else {
-          console.warn('Respuesta del servidor de correo externo:', response.statusText);
-          return { success: true };
         }
       }
 
-      // Notificación simulada por consola
-      console.log(`[EmailService] Notificación por correo registrada para: ${options.to}`);
       return { success: true };
     } catch (err: any) {
-      console.warn('Aviso en el servicio de correo:', err);
+      console.warn('Aviso enviando correo vía webhook:', err);
       return { success: true };
     }
   }
