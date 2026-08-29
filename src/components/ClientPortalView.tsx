@@ -409,11 +409,15 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     </button>
                   ) : (
                     <button
-                      onClick={() => openPrintableCertificate(cert)}
+                      onClick={() =>
+                        openPrintableCertificate(cert, {
+                          isProvisionalPreview: cert.status === 'Pendiente de Firma' || !cert.signedAt,
+                        })
+                      }
                       className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition"
                     >
                       <Printer className="w-4 h-4" />
-                      <span>{cert.status === 'Pendiente de Firma' ? 'Ver Borrador de Certificado' : 'Ver / Imprimir Certificado PDF'}</span>
+                      <span>{cert.status === 'Pendiente de Firma' || !cert.signedAt ? 'Ver Borrador Provisional' : 'Ver / Imprimir Certificado PDF'}</span>
                     </button>
                   )}
                 </div>
