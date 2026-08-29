@@ -27,15 +27,19 @@ export const WasteTypesConfigModal: React.FC<WasteTypesConfigModalProps> = ({
   const [newCapacity, setNewCapacity] = useState<number>(5000);
   const [newDescription, setNewDescription] = useState('');
 
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   useEffect(() => {
     if (isOpen) {
       setWasteTypes(RCDService.getWasteTypes());
+      setErrorMessage(null);
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleUpdateCapacityPriceAndName = (code: string, capacity: number, price: number, name: string) => {
+  const handleUpdateCapacityPriceAndName = async (code: string, capacity: number, price: number, name: string) => {
     const updated = wasteTypes.map((wt) => {
       if (wt.code === code) {
         return { ...wt, maxCapacityTons: capacity, pricePerTon: price, name };
@@ -43,13 +47,21 @@ export const WasteTypesConfigModal: React.FC<WasteTypesConfigModalProps> = ({
       return wt;
     });
     setWasteTypes(updated);
-    RCDService.saveWasteTypes(updated);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2000);
+    setIsSaving(true);
+    setErrorMessage(null);
+    const res = await RCDService.saveWasteTypes(updated);
+    setIsSaving(false);
+
+    if (res && !res.success && res.error) {
+      setErrorMessage(`Aviso de sincronización con base de datos: ${res.error}`);
+    } else {
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 2500);
+    }
     onDataChanged();
   };
 
-  const handleCreateNewWasteType = (e: React.FormEvent) => {
+  const handleCreateNewWasteType = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCode.trim() || !newName.trim()) {
       alert('Por favor ingrese el Código LER y la Denominación.');
@@ -65,20 +77,32 @@ export const WasteTypesConfigModal: React.FC<WasteTypesConfigModalProps> = ({
       description: newDescription.trim() || `Residuo LER ${newCode}`,
     };
 
-    RCDService.addOrUpdateWasteType(created);
+    setIsSaving(true);
+    setErrorMessage(null);
+    const res = await RCDService.addOrUpdateWasteType(created);
+    setIsSaving(false);
     setWasteTypes(RCDService.getWasteTypes());
 
-    // Reset form
-    setNewCode('');
-    setNewName('');
-    setNewDescription('');
-    setShowAddForm(false);
+    if (res && !res.success && res.error) {
+      setErrorMessage(`Error guardando en base de datos: ${res.error}`);
+    } else {
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 2500);
+      // Reset form
+      setNewCode('');
+      setNewName('');
+      setNewDescription('');
+      setShowAddForm(false);
+    }
     onDataChanged();
   };
 
-  const handleDeleteWasteType = (code: string) => {
+  const handleDeleteWasteType = async (code: string) => {
     if (confirm(`¿Eliminar el tipo de residuo LER ${code} del catálogo?`)) {
-      RCDService.deleteWasteType(code);
+      setIsSaving(true);
+      setErrorMessage(null);
+      await RCDService.deleteWasteType(code);
+      setIsSaving(false);
       setWasteTypes(RCDService.getWasteTypes());
       onDataChanged();
     }
@@ -293,10 +317,17 @@ export const WasteTypesConfigModal: React.FC<WasteTypesConfigModalProps> = ({
             </table>
           </div>
 
+          {errorMessage && (
+            <div className="bg-rose-500/10 border border-rose-500/30 p-3 rounded-xl text-rose-300 text-xs flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
           {savedSuccess && (
             <div className="text-xs text-emerald-400 font-bold flex items-center space-x-1 justify-end">
               <Check className="w-4 h-4" />
-              <span>Capacidades de la planta actualizadas correctamente.</span>
+              <span>Residuos y capacidades sincronizados correctamente en la base de datos.</span>
             </div>
           )}
         </div>
