@@ -1,4 +1,5 @@
 export interface WasteType {
+  id?: string;
   code: string; // e.g., '17 01 01'
   name: string; // e.g., 'Escombro Limpio (Hormigón y Piedra)'
   category: 'Limpio' | 'Sucio' | 'Tierras' | 'Peligroso' | 'Valorizable';
