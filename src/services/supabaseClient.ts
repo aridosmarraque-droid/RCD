@@ -445,25 +445,34 @@ export class SupabaseService {
   // WASTE TYPES
   // ==========================================
 
-  private static mapWasteTypeToDB(wt: WasteType) {
-    return {
+  private static mapWasteTypeToDB(wt: WasteType, excludeColumns: string[] = ['rcd_description']): Record<string, any> {
+    const row: Record<string, any> = {
       rcd_code: wt.code,
       rcd_name: wt.name,
       rcd_category: wt.category || 'Limpio',
-      rcd_price_per_ton: wt.pricePerTon || 0,
-      rcd_description: wt.description || null,
-      rcd_max_capacity_tons: wt.maxCapacityTons || 5000,
+      rcd_price_per_ton: wt.pricePerTon ?? 0,
+      rcd_max_capacity_tons: wt.maxCapacityTons ?? 5000,
     };
+
+    if (!excludeColumns.includes('rcd_description') && wt.description) {
+      row.rcd_description = wt.description;
+    }
+
+    for (const col of excludeColumns) {
+      delete row[col];
+    }
+
+    return row;
   }
 
   private static mapDBToWasteType(row: any): WasteType {
     return {
-      code: row.rcd_code,
-      name: row.rcd_name,
-      category: row.rcd_category || 'Limpio',
-      pricePerTon: Number(row.rcd_price_per_ton) || 0,
-      description: row.rcd_description || undefined,
-      maxCapacityTons: Number(row.rcd_max_capacity_tons) || 5000,
+      code: row.rcd_code || row.code || '',
+      name: row.rcd_name || row.name || '',
+      category: row.rcd_category || row.category || 'Limpio',
+      pricePerTon: Number(row.rcd_price_per_ton ?? row.price_per_ton ?? 0),
+      description: row.rcd_description || row.description || undefined,
+      maxCapacityTons: Number(row.rcd_max_capacity_tons ?? row.max_capacity_tons ?? 5000),
     };
   }
 
@@ -486,34 +495,68 @@ export class SupabaseService {
     }
   }
 
-  static async upsertWasteTypes(types: WasteType[]): Promise<void> {
+  static async upsertWasteTypes(types: WasteType[]): Promise<{ success: boolean; error?: string }> {
     const supabase = this.getClient();
-    if (!supabase) return;
+    if (!supabase) return { success: false, error: 'Supabase no está configurado' };
 
-    try {
-      const rows = types.map(this.mapWasteTypeToDB);
-      const { error } = await supabase.from('rcd_waste_types').upsert(rows, { onConflict: 'rcd_code' });
+    if (!types || types.length === 0) return { success: true };
 
-      if (error) {
-        console.warn('Notice upserting rcd_waste_types into Supabase:', error.message || error);
+    const excluded = new Set<string>(['rcd_description']);
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const rows = types.map((t) => this.mapWasteTypeToDB(t, Array.from(excluded)));
+        const { error } = await supabase.from('rcd_waste_types').upsert(rows, { onConflict: 'rcd_code' });
+
+        if (!error) {
+          return { success: true };
+        }
+
+        const msg = error.message || String(error);
+        console.warn(`Intento ${attempt + 1} upserting rcd_waste_types:`, msg);
+
+        // Detect missing column error (e.g. "Could not find the '...' column")
+        const missingColMatch = msg.match(/Could not find the '([^']+)' column/i) || msg.match(/column "?([^"\s]+)"? of relation/i);
+        if (missingColMatch && missingColMatch[1]) {
+          const colName = missingColMatch[1];
+          excluded.add(colName);
+          continue;
+        }
+
+        // Try without onConflict if that was the issue or fallback to standard columns
+        if (msg.toLowerCase().includes('onconflict') || msg.toLowerCase().includes('conflict')) {
+          const { error: errorNoConflict } = await supabase.from('rcd_waste_types').upsert(rows);
+          if (!errorNoConflict) {
+            return { success: true };
+          }
+        }
+
+        return { success: false, error: msg };
+      } catch (err: any) {
+        console.warn('Notice upserting rcd_waste_types into Supabase:', err);
+        return { success: false, error: err?.message || String(err) };
       }
-    } catch (err) {
-      console.warn('Notice upserting rcd_waste_types into Supabase:', err);
     }
+
+    return { success: false, error: 'No se pudo sincronizar el tipo de residuo con Supabase.' };
   }
 
-  static async deleteWasteType(code: string): Promise<void> {
+  static async deleteWasteType(code: string): Promise<{ success: boolean; error?: string }> {
     const supabase = this.getClient();
-    if (!supabase) return;
+    if (!supabase) return { success: false, error: 'Supabase no está configurado' };
 
     try {
       const { error } = await supabase.from('rcd_waste_types').delete().eq('rcd_code', code);
 
       if (error) {
         console.warn('Notice deleting rcd_waste_types from Supabase:', error.message || error);
+        return { success: false, error: error.message };
       }
-    } catch (err) {
+      return { success: true };
+    } catch (err: any) {
       console.warn('Notice deleting rcd_waste_types from Supabase:', err);
+      return { success: false, error: err?.message || String(err) };
     }
   }
 }
+
