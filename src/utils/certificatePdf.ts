@@ -134,15 +134,14 @@ export function openPrintableCertificate(
 
   // Determine Signature Block for Page 1
   const isOfficiallySigned = certificate.status === 'Emitido' || !!certificate.signedAt;
-  const isForSignatureMode = options?.forSignature || (!isOfficiallySigned && !options?.isProvisionalPreview);
-  const isProvisionalClientDraft = options?.isProvisionalPreview && !isOfficiallySigned;
+  const isForSignatureMode = !!options?.forSignature;
 
   let signatureBlockHtml = '';
 
   if (isOfficiallySigned) {
     // Official Valid Digital Signature Box (FNMT / eIDAS)
     signatureBlockHtml = `
-      <div class="stamp-box" style="border: 2px solid #047857; background: #ECFDF5; width: 330px; padding: 10px; text-align: left; border-radius: 6px;">
+      <div class="stamp-box" style="border: 2px solid #047857; background: #ECFDF5; width: 340px; padding: 10px; text-align: left; border-radius: 6px; box-sizing: border-box;">
         <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #A7F3D0; padding-bottom: 4px; margin-bottom: 6px;">
           <span style="font-size: 9.5px; font-weight: bold; color: #047857;">🏛️ FIRMA DIGITAL FNMT-RCM</span>
           <span style="font-size: 8px; font-weight: bold; background: #047857; color: #FFFFFF; padding: 1.5px 6px; border-radius: 3px;">eIDAS VÁLIDO</span>
@@ -162,43 +161,32 @@ export function openPrintableCertificate(
       </div>
     `;
   } else if (isForSignatureMode) {
-    // Clean Official Box for Signature in Acrobat / AutoFirma (NO RED STAMP!)
+    // Clean Empty Green Box for placing digital signature in Acrobat / AutoFirma
     signatureBlockHtml = `
-      <div class="stamp-box" style="border: 2px dashed #059669; background: #F0FDF4; width: 330px; padding: 10px; text-align: left; border-radius: 6px;">
-        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #A7F3D0; padding-bottom: 4px; margin-bottom: 6px;">
-          <span style="font-size: 9px; font-weight: bold; color: #065F46;">✍️ ESPACIO PARA FIRMA ELECTRÓNICA</span>
-          <span style="font-size: 8px; font-weight: bold; background: #059669; color: #FFFFFF; padding: 1px 5px; border-radius: 3px;">FNMT / ACROBAT</span>
+      <div class="stamp-box" style="border: 2px dashed #059669; background: #F0FDF4; width: 340px; height: 115px; padding: 8px 10px; border-radius: 6px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px dashed #A7F3D0; padding-bottom: 3px;">
+          <span style="font-size: 8.5px; font-weight: bold; color: #047857;">✍️ ESPACIO PARA FIRMA DIGITAL (FNMT / ACROBAT)</span>
+          <span style="font-size: 7.5px; font-weight: bold; background: #D1FAE5; color: #047857; padding: 1px 5px; border-radius: 3px;">RESERVADO</span>
         </div>
-        <div style="font-size: 8.5px; color: #1E293B; line-height: 1.35;">
-          <div><strong>Empresa Gestora:</strong> PLANTA DE VALORIZACIÓN RCD (NIF: B-91029384)</div>
-          <div><strong>Representante:</strong> ${certificate.signerName || certificate.issuerName || 'Director Técnico / Apoderado Legal'}</div>
-          <div style="color: #475569; font-size: 8px; margin-top: 4px; font-style: italic;">
-            Documento preparado para su firma digital mediante Certificado FNMT-RCM en Adobe Acrobat o AutoFirma.
-          </div>
-          <div style="color: #047857; font-weight: bold; margin-top: 4px; font-family: monospace; font-size: 8px;">
-            CSV: ${certificate.verificationCode}
-          </div>
+        <div style="flex: 1;"></div>
+        <div style="font-size: 8px; color: #059669; font-family: monospace; text-align: right;">
+          CSV: ${certificate.verificationCode}
         </div>
-      </div>
-    `;
-  } else if (isProvisionalClientDraft) {
-    // Only in Client Portal Draft View when waiting for admin signature
-    signatureBlockHtml = `
-      <div class="stamp-box" style="border: 2px dashed #F59E0B; background: #FFFBEB; width: 320px; padding: 10px; text-align: center; border-radius: 6px;">
-        <div style="font-size: 10px; font-weight: bold; color: #B45309;">⏳ CERTIFICADO PROVISIONAL</div>
-        <div style="font-size: 9px; color: #92400E; margin-top: 3px;">
-          Pendiente de firma y sellado digital por la Dirección Técnica mediante Certificado FNMT-RCM.
-        </div>
-        <div style="font-size: 8px; color: #78350F; margin-top: 4px; font-family: monospace;">Ref: ${certificate.verificationCode}</div>
       </div>
     `;
   } else {
-    // Default Clean Signature Space
+    // Preliminary Mode for Client (Before Signature): RED Warning Box
     signatureBlockHtml = `
-      <div class="stamp-box" style="border: 2px dashed #059669; background: #F0FDF4; width: 330px; padding: 10px; text-align: left; border-radius: 6px;">
-        <div style="font-size: 9px; font-weight: bold; color: #065F46; margin-bottom: 4px;">FIRMA DIGITAL DE LA EMPRESA GESTORA</div>
-        <div style="font-size: 8.5px; color: #334155;">Planta de Valorización RCD (NIF: B-91029384)</div>
-        <div style="font-size: 8.5px; color: #334155;">CSV: ${certificate.verificationCode}</div>
+      <div class="stamp-box" style="border: 2px dashed #DC2626; background: #FEF2F2; width: 340px; height: 115px; padding: 12px; text-align: center; border-radius: 6px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+        <div style="font-size: 11px; font-weight: 900; color: #DC2626; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.3;">
+          ⚠️ CERTIFICADO NO VÁLIDO SIN LA FIRMA DIGITAL
+        </div>
+        <div style="font-size: 8.5px; color: #991B1B; font-weight: 600; line-height: 1.35; margin-top: 6px;">
+          DOCUMENTO PROVISIONAL PENDIENTE DE EMISIÓN Y FIRMA DIGITAL ELECTRÓNICA POR LA DIRECCIÓN TÉCNICA
+        </div>
+        <div style="font-size: 8px; color: #B91C1C; margin-top: 6px; font-family: monospace; font-weight: bold;">
+          CSV: ${certificate.verificationCode}
+        </div>
       </div>
     `;
   }
@@ -694,12 +682,7 @@ export function openPrintableCertificate(
         <div class="footer">
           <div>
             <div style="font-size: 10.5px; color: #475569;">Fecha de Emisión: <strong>${certificate.issueDate}</strong></div>
-            <div style="font-size: 10.5px; color: #475569; margin-top: 3px;">Código de Verificación Electrónica (CSV): <strong style="font-family: monospace; color: #065F46;">${certificate.verificationCode}</strong></div>
-            <div style="margin-top: 10px; font-size: 10.5px; color: #0F172A;">
-              <strong>REPRESENTANTE LEGAL Y DIRECCIÓN TÉCNICA:</strong><br/>
-              ${certificate.signerName || certificate.issuerName || 'Director Técnico / Apoderado'}<br/>
-              <span style="color: #64748B; font-size: 9px;">Planta de Valorización y Reciclaje RCD Sevilla</span>
-            </div>
+            <div style="font-size: 10.5px; color: #475569; margin-top: 4px;">Código de Verificación Electrónica (CSV): <strong style="font-family: monospace; color: #065F46;">${certificate.verificationCode}</strong></div>
           </div>
 
           ${signatureBlockHtml}
