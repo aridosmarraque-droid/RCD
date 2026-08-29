@@ -231,56 +231,64 @@ export const WasteTypesConfigModal: React.FC<WasteTypesConfigModalProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {wasteTypes.map((wt) => (
-                  <tr key={wt.code} className="hover:bg-slate-900/50">
-                    <td className="py-2.5 px-3 font-mono font-bold text-emerald-400">LER {wt.code}</td>
-                    <td className="py-2.5 px-3">
-                      <input
-                        type="text"
-                        value={wt.name}
-                        onChange={(e) =>
-                          handleUpdateCapacityPriceAndName(wt.code, wt.maxCapacityTons || 5000, wt.pricePerTon, e.target.value)
-                        }
-                        placeholder="Nombre / Descripción del residuo"
-                        className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-white font-semibold focus:border-emerald-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <input
-                        type="number"
-                        step="0.5"
-                        value={wt.pricePerTon}
-                        onChange={(e) =>
-                          handleUpdateCapacityPriceAndName(wt.code, wt.maxCapacityTons || 5000, parseFloat(e.target.value) || 0, wt.name)
-                        }
-                        className="w-20 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-emerald-400 font-bold focus:border-emerald-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="number"
-                          step="100"
-                          value={wt.maxCapacityTons || 5000}
-                          onChange={(e) =>
-                            handleUpdateCapacityPriceAndName(wt.code, parseFloat(e.target.value) || 1000, wt.pricePerTon, wt.name)
-                          }
-                          className="w-28 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-amber-400 font-bold focus:border-amber-500 focus:outline-none"
-                        />
-                        <span className="text-[11px] text-slate-400">t</span>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <button
-                        onClick={() => handleDeleteWasteType(wt.code)}
-                        className="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded transition"
-                        title="Eliminar tipo de residuo"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                {wasteTypes.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-500 text-xs">
+                      No hay tipos de residuo configurados en la base de datos (tabla <code className="text-slate-400 font-mono">rcd_waste_types</code>). Pulse en "Añadir Nuevo Tipo de Residuo" para dar de alta los residuos de su planta.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  wasteTypes.map((wt) => (
+                    <tr key={wt.code} className="hover:bg-slate-900/50">
+                      <td className="py-2.5 px-3 font-mono font-bold text-emerald-400">LER {wt.code}</td>
+                      <td className="py-2.5 px-3">
+                        <input
+                          type="text"
+                          value={wt.name}
+                          onChange={(e) =>
+                            handleUpdateCapacityPriceAndName(wt.code, wt.maxCapacityTons || 5000, wt.pricePerTon, e.target.value)
+                          }
+                          placeholder="Nombre / Descripción del residuo"
+                          className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-white font-semibold focus:border-emerald-500 focus:outline-none"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={wt.pricePerTon}
+                          onChange={(e) =>
+                            handleUpdateCapacityPriceAndName(wt.code, wt.maxCapacityTons || 5000, parseFloat(e.target.value) || 0, wt.name)
+                          }
+                          className="w-20 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-emerald-400 font-bold focus:border-emerald-500 focus:outline-none"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="number"
+                            step="100"
+                            value={wt.maxCapacityTons || 5000}
+                            onChange={(e) =>
+                              handleUpdateCapacityPriceAndName(wt.code, parseFloat(e.target.value) || 1000, wt.pricePerTon, wt.name)
+                            }
+                            className="w-28 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-amber-400 font-bold focus:border-amber-500 focus:outline-none"
+                          />
+                          <span className="text-[11px] text-slate-400">t</span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <button
+                          onClick={() => handleDeleteWasteType(wt.code)}
+                          className="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded transition"
+                          title="Eliminar tipo de residuo"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
