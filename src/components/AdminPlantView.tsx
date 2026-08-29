@@ -671,11 +671,11 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                           <span>✍️ Firmar / Subir PDF</span>
                         </button>
                         <button
-                          onClick={() => openPrintableCertificate(cert)}
+                          onClick={() => openPrintableCertificate(cert, { forSignature: true })}
                           className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-2 transition border border-slate-700"
                         >
                           <Printer className="w-4 h-4" />
-                          <span>Ver Borrador</span>
+                          <span>Ver Documento para Firma</span>
                         </button>
                       </>
                     ) : cert.signedPdfData ? (
