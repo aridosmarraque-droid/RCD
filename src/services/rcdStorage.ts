@@ -344,7 +344,7 @@ export class RCDService {
       }
 
       // 2. Email notification via EmailService if client has notifyEmail enabled and an email address
-      if (client.notifyEmail && client.email) {
+      if (client.notifyEmail && client.email && EmailService.isConfigured()) {
         try {
           const emailResult = await Promise.race([
             EmailService.sendAlbaranEmail(client.email, client.name, created),
@@ -548,7 +548,7 @@ export class RCDService {
         await UltramsgService.sendWhatsApp(client.mobile, msg);
       }
 
-      if (client.notifyEmail && client.email) {
+      if (client.notifyEmail && client.email && EmailService.isConfigured()) {
         const certSubject = `[Planta RCD] Solicitud de Certificado Registrada Nº ${newCertificate.certificateNumber}`;
         const certText = `Estimado cliente ${client.name},\n\nSe ha registrado su solicitud de Certificado de Valorización de RCD:\n\n• Nº Certificado: ${newCertificate.certificateNumber}\n• Obra / Promotor: ${newCertificate.constructionSiteName}\n• Total Certificado: ${newCertificate.totalTons} Toneladas\n• Código Verificación: ${newCertificate.verificationCode}\n\nEl certificado estará disponible firmado digitalmente en breve. Se ha notificado al responsable de la empresa.`;
         
@@ -561,15 +561,17 @@ export class RCDService {
       }
     }
 
-    // Notify manager for pending signature
-    await EmailService.sendPendingSignatureEmail({
-      certificateNumber: newCertificate.certificateNumber,
-      clientName: newCertificate.clientName,
-      thirdPartyName: newCertificate.thirdPartyName,
-      constructionSiteName: newCertificate.constructionSiteName,
-      totalTons: newCertificate.totalTons,
-      issueDate: newCertificate.issueDate,
-    });
+    // Notify manager for pending signature if email is configured
+    if (EmailService.isConfigured()) {
+      await EmailService.sendPendingSignatureEmail({
+        certificateNumber: newCertificate.certificateNumber,
+        clientName: newCertificate.clientName,
+        thirdPartyName: newCertificate.thirdPartyName,
+        constructionSiteName: newCertificate.constructionSiteName,
+        totalTons: newCertificate.totalTons,
+        issueDate: newCertificate.issueDate,
+      });
+    }
 
     return newCertificate;
   }
@@ -624,17 +626,19 @@ export class RCDService {
     }
 
     // Send notification email to client that the certificate is signed and available
-    const client = this.getClientById(updatedCert.clientId);
-    const clientEmail = client?.email || `${updatedCert.clientName.toLowerCase().replace(/[^a-z0-9]/g, '')}@empresa.es`;
-    
-    await EmailService.sendSignedCertificateEmail(clientEmail, {
-      certificateNumber: updatedCert.certificateNumber,
-      clientName: updatedCert.clientName,
-      thirdPartyName: updatedCert.thirdPartyName,
-      totalTons: updatedCert.totalTons,
-      signedAt: updatedCert.signedAt,
-      signerName: updatedCert.signerName,
-    });
+    if (EmailService.isConfigured()) {
+      const client = this.getClientById(updatedCert.clientId);
+      const clientEmail = client?.email || `${updatedCert.clientName.toLowerCase().replace(/[^a-z0-9]/g, '')}@empresa.es`;
+      
+      await EmailService.sendSignedCertificateEmail(clientEmail, {
+        certificateNumber: updatedCert.certificateNumber,
+        clientName: updatedCert.clientName,
+        thirdPartyName: updatedCert.thirdPartyName,
+        totalTons: updatedCert.totalTons,
+        signedAt: updatedCert.signedAt,
+        signerName: updatedCert.signerName,
+      });
+    }
 
     return updatedCert;
   }
@@ -834,4 +838,3 @@ export class RCDService {
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
   }
 }
-
