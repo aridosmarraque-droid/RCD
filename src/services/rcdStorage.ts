@@ -4,70 +4,13 @@ import { UltramsgService } from './ultramsgService';
 import { EmailService } from './emailService';
 import { compressImage } from '../utils/imageCompressor';
 
-export const OFFICIAL_WASTE_TYPES: WasteType[] = [
-  {
-    code: '17 01 01',
-    name: 'Hormigón y Piedra (Escombro Limpio)',
-    category: 'Limpio',
-    pricePerTon: 8.5,
-    description: 'Bloques de hormigón, mortero, piedra natural sin mezcla de plásticos ni maderas.',
-    maxCapacityTons: 10000,
-  },
-  {
-    code: '17 01 02',
-    name: 'Ladrillos, Tejas y Cerámica',
-    category: 'Limpio',
-    pricePerTon: 9.0,
-    description: 'Material cerámico de tabiquería, teja roja, gres y azulejos.',
-    maxCapacityTons: 8000,
-  },
-  {
-    code: '17 01 07',
-    name: 'Mezcla Hormigón y Cerámica (Escombro Seleccionado)',
-    category: 'Limpio',
-    pricePerTon: 11.0,
-    description: 'Mezcla limpia de materiales pétreos y cerámicos sin impropios.',
-    maxCapacityTons: 12000,
-  },
-  {
-    code: '17 05 04',
-    name: 'Tierras y Piedras de Excavación',
-    category: 'Tierras',
-    pricePerTon: 6.0,
-    description: 'Tierras limpias procedente de desbroces, cimentaciones y vaciados de obras.',
-    maxCapacityTons: 20000,
-  },
-  {
-    code: '17 09 04',
-    name: 'Residuos Mezclados RCD (Escombro Sucio / Mezcla)',
-    category: 'Sucio',
-    pricePerTon: 18.5,
-    description: 'Mezclas de RCD con resto de yesos, maderas, plásticos o sacos de papel.',
-    maxCapacityTons: 5000,
-  },
-  {
-    code: '17 02 01',
-    name: 'Madera de Obra y Encofrados',
-    category: 'Valorizable',
-    pricePerTon: 14.0,
-    description: 'Palets, tableros de encofrar, vigas y recortes de madera.',
-    maxCapacityTons: 3000,
-  },
-  {
-    code: '17 04 05',
-    name: 'Hierro y Acero (Metales RCD)',
-    category: 'Valorizable',
-    pricePerTon: 0.0,
-    description: 'Varillas de ferralla, perfiles de acero, tuberías metálicas.',
-    maxCapacityTons: 2000,
-  },
-];
+export const OFFICIAL_WASTE_TYPES: WasteType[] = [];
 
 const STORAGE_KEYS = {
   CLIENTS: 'rcd_app_clients_v4',
   ALBARANES: 'rcd_app_albaranes_v4',
   CERTIFICATES: 'rcd_app_certificates_v4',
-  WASTE_TYPES: 'rcd_app_waste_types_v4',
+  WASTE_TYPES: 'rcd_app_waste_types_v5',
   USERS: 'rcd_app_users_v4',
   CURRENT_USER: 'rcd_app_current_user_v4',
 };
@@ -75,6 +18,10 @@ const STORAGE_KEYS = {
 // Purge any legacy demo or older cache versions from localStorage
 try {
   const legacyKeys = [
+    'rcd_app_waste_types_v4',
+    'rcd_app_waste_types_v3',
+    'rcd_app_waste_types_v2',
+    'rcd_app_waste_types_v1',
     'rcd_app_albaranes_v1',
     'rcd_app_albaranes_v2',
     'rcd_app_albaranes_v3',
@@ -718,10 +665,16 @@ export class RCDService {
   // WASTE TYPES MANAGEMENT
   // ===============================================
   static async loadWasteTypesFromRemote(): Promise<WasteType[]> {
-    const remote = await SupabaseService.fetchWasteTypes();
-    if (remote && remote.length > 0) {
-      this.saveWasteTypesLocal(remote);
-      return remote;
+    if (SupabaseService.isConfigured()) {
+      try {
+        const remote = await SupabaseService.fetchWasteTypes();
+        if (remote !== null && Array.isArray(remote)) {
+          this.saveWasteTypesLocal(remote);
+          return remote;
+        }
+      } catch (err) {
+        console.warn('Notice loading waste types from Supabase:', err);
+      }
     }
     return this.getWasteTypes();
   }
@@ -730,17 +683,15 @@ export class RCDService {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.WASTE_TYPES);
       if (!data) {
-        this.saveWasteTypesLocal(OFFICIAL_WASTE_TYPES);
-        return OFFICIAL_WASTE_TYPES;
+        return [];
       }
       const parsed = JSON.parse(data);
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        this.saveWasteTypesLocal(OFFICIAL_WASTE_TYPES);
-        return OFFICIAL_WASTE_TYPES;
+      if (!Array.isArray(parsed)) {
+        return [];
       }
       return parsed;
     } catch {
-      return OFFICIAL_WASTE_TYPES;
+      return [];
     }
   }
 
@@ -883,3 +834,4 @@ export class RCDService {
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
   }
 }
+
