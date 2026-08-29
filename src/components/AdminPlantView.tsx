@@ -18,7 +18,8 @@ import {
   ArrowUp,
   ArrowDown,
   Calendar,
-  Filter
+  Filter,
+  Plus
 } from 'lucide-react';
 import { Albaran, Certificate, Client, RCDUser, WasteType } from '../types/rcd';
 import { ClientsDirectoryView } from './ClientsDirectoryView';
@@ -372,58 +373,73 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {configuredWasteTypes.map((wt) => {
-                const enteredTons = wasteBreakdownMap[wt.code]?.tons || 0;
-                const maxCap = wt.maxCapacityTons || 5000;
-                const remainingTons = Math.max(0, maxCap - enteredTons);
-                const occupancyPct = Math.min(100, Math.round((enteredTons / maxCap) * 100));
+              {configuredWasteTypes.length === 0 ? (
+                <div className="col-span-full py-8 px-4 text-center bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+                  <p className="text-xs text-slate-400">
+                    No hay tipos de residuos registrados en la base de datos (tabla <code className="text-emerald-400 font-mono">rcd_waste_types</code>).
+                  </p>
+                  <button
+                    onClick={() => setShowWasteTypesModal(true)}
+                    className="inline-flex items-center space-x-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3.5 py-2 rounded-lg text-xs transition"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Configurar Catálogo de Residuos LER</span>
+                  </button>
+                </div>
+              ) : (
+                configuredWasteTypes.map((wt) => {
+                  const enteredTons = wasteBreakdownMap[wt.code]?.tons || 0;
+                  const maxCap = wt.maxCapacityTons || 5000;
+                  const remainingTons = Math.max(0, maxCap - enteredTons);
+                  const occupancyPct = Math.min(100, Math.round((enteredTons / maxCap) * 100));
 
-                let barColor = 'bg-emerald-500';
-                let textColor = 'text-emerald-400';
-                if (occupancyPct > 85) {
-                  barColor = 'bg-rose-500';
-                  textColor = 'text-rose-400';
-                } else if (occupancyPct > 60) {
-                  barColor = 'bg-amber-500';
-                  textColor = 'text-amber-400';
-                }
+                  let barColor = 'bg-emerald-500';
+                  let textColor = 'text-emerald-400';
+                  if (occupancyPct > 85) {
+                    barColor = 'bg-rose-500';
+                    textColor = 'text-rose-400';
+                  } else if (occupancyPct > 60) {
+                    barColor = 'bg-amber-500';
+                    textColor = 'text-amber-400';
+                  }
 
-                return (
-                  <div key={wt.code} className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
-                    <div className="flex justify-between items-start">
-                      <span className="font-mono font-bold text-xs text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                        LER {wt.code}
-                      </span>
-                      <span className="text-[11px] font-bold text-slate-400">{wt.category}</span>
-                    </div>
-
-                    <div className="text-xs font-bold text-white line-clamp-1">{wt.name}</div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs bg-slate-900 p-2.5 rounded-lg border border-slate-800">
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">Residuo Entrado:</span>
-                        <span className="font-extrabold text-white text-sm">{enteredTons.toFixed(2)} t</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">Capacidad Restante:</span>
-                        <span className={`font-extrabold text-sm ${textColor}`}>
-                          {remainingTons.toFixed(2)} t
+                  return (
+                    <div key={wt.code} className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+                      <div className="flex justify-between items-start">
+                        <span className="font-mono font-bold text-xs text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                          LER {wt.code}
                         </span>
+                        <span className="text-[11px] font-bold text-slate-400">{wt.category}</span>
                       </div>
-                    </div>
 
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[10px] font-semibold text-slate-400">
-                        <span>Ocupación de Planta: {occupancyPct}%</span>
-                        <span>Máx: {maxCap} t</span>
+                      <div className="text-xs font-bold text-white line-clamp-1">{wt.name}</div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Residuo Entrado:</span>
+                          <span className="font-extrabold text-white text-sm">{enteredTons.toFixed(2)} t</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Capacidad Restante:</span>
+                          <span className={`font-extrabold text-sm ${textColor}`}>
+                            {remainingTons.toFixed(2)} t
+                          </span>
+                        </div>
                       </div>
-                      <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
-                        <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${occupancyPct}%` }} />
+
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] font-semibold text-slate-400">
+                          <span>Ocupación de Planta: {occupancyPct}%</span>
+                          <span>Máx: {maxCap} t</span>
+                        </div>
+                        <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
+                          <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${occupancyPct}%` }} />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
