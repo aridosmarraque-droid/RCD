@@ -699,12 +699,12 @@ export class RCDService {
     localStorage.setItem(STORAGE_KEYS.WASTE_TYPES, JSON.stringify(types));
   }
 
-  static saveWasteTypes(types: WasteType[]): void {
+  static async saveWasteTypes(types: WasteType[]): Promise<{ success: boolean; error?: string }> {
     this.saveWasteTypesLocal(types);
-    SupabaseService.upsertWasteTypes(types);
+    return await SupabaseService.upsertWasteTypes(types);
   }
 
-  static addOrUpdateWasteType(wasteType: WasteType): void {
+  static async addOrUpdateWasteType(wasteType: WasteType): Promise<{ success: boolean; error?: string }> {
     const current = this.getWasteTypes();
     const idx = current.findIndex((w) => w.code.trim() === wasteType.code.trim());
     if (idx >= 0) {
@@ -712,13 +712,13 @@ export class RCDService {
     } else {
       current.push(wasteType);
     }
-    this.saveWasteTypes(current);
+    return await this.saveWasteTypes(current);
   }
 
-  static deleteWasteType(code: string): void {
+  static async deleteWasteType(code: string): Promise<{ success: boolean; error?: string }> {
     const filtered = this.getWasteTypes().filter((w) => w.code.trim() !== code.trim());
     this.saveWasteTypesLocal(filtered);
-    SupabaseService.deleteWasteType(code);
+    return await SupabaseService.deleteWasteType(code);
   }
 
   static clearAllData(): void {
