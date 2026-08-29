@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Save, Factory, Check, AlertCircle } from 'lucide-react';
+import { X, Plus, Trash2, Save, Factory, Check, AlertCircle, Copy, ShieldAlert, CheckCheck } from 'lucide-react';
 import { WasteType } from '../types/rcd';
 import { RCDService } from '../services/rcdStorage';
 
@@ -29,11 +29,18 @@ export const WasteTypesConfigModal: React.FC<WasteTypesConfigModalProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [copiedSql, setCopiedSql] = useState(false);
+
+  const rlsFixSql = `CREATE POLICY "Permitir todo a anon y authenticated en rcd_waste_types" 
+ON rcd_waste_types FOR ALL 
+USING (true) 
+WITH CHECK (true);`;
 
   useEffect(() => {
     if (isOpen) {
       setWasteTypes(RCDService.getWasteTypes());
       setErrorMessage(null);
+      setCopiedSql(false);
     }
   }, [isOpen]);
 
@@ -53,7 +60,7 @@ export const WasteTypesConfigModal: React.FC<WasteTypesConfigModalProps> = ({
     setIsSaving(false);
 
     if (res && !res.success && res.error) {
-      setErrorMessage(`Aviso de sincronización con base de datos: ${res.error}`);
+      setErrorMessage(res.error);
     } else {
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2500);
@@ -83,16 +90,17 @@ export const WasteTypesConfigModal: React.FC<WasteTypesConfigModalProps> = ({
     setIsSaving(false);
     setWasteTypes(RCDService.getWasteTypes());
 
+    // Always reset form so operator is not stuck
+    setNewCode('');
+    setNewName('');
+    setNewDescription('');
+    setShowAddForm(false);
+
     if (res && !res.success && res.error) {
-      setErrorMessage(`Error guardando en base de datos: ${res.error}`);
+      setErrorMessage(res.error);
     } else {
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2500);
-      // Reset form
-      setNewCode('');
-      setNewName('');
-      setNewDescription('');
-      setShowAddForm(false);
     }
     onDataChanged();
   };
@@ -101,11 +109,20 @@ export const WasteTypesConfigModal: React.FC<WasteTypesConfigModalProps> = ({
     if (confirm(`¿Eliminar el tipo de residuo LER ${code} del catálogo?`)) {
       setIsSaving(true);
       setErrorMessage(null);
-      await RCDService.deleteWasteType(code);
+      const res = await RCDService.deleteWasteType(code);
       setIsSaving(false);
       setWasteTypes(RCDService.getWasteTypes());
+      if (res && !res.success && res.error) {
+        setErrorMessage(res.error);
+      }
       onDataChanged();
     }
+  };
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(rlsFixSql);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 3000);
   };
 
   return (
@@ -318,9 +335,53 @@ export const WasteTypesConfigModal: React.FC<WasteTypesConfigModalProps> = ({
           </div>
 
           {errorMessage && (
-            <div className="bg-rose-500/10 border border-rose-500/30 p-3 rounded-xl text-rose-300 text-xs flex items-center space-x-2">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-              <span>{errorMessage}</span>
+            <div className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl text-xs space-y-2">
+              <div className="flex items-start space-x-2 text-rose-300">
+                <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                <div className="flex-1 space-y-1">
+                  <div className="font-bold text-rose-200">
+                    {errorMessage.toLowerCase().includes('row-level security') || errorMessage.toLowerCase().includes('policy')
+                      ? 'Política de Seguridad RLS en Supabase'
+                      : 'Aviso de sincronización con Supabase'}
+                  </div>
+                  <div className="text-slate-300 leading-relaxed">
+                    {errorMessage.toLowerCase().includes('row-level security') || errorMessage.toLowerCase().includes('policy') ? (
+                      <>
+                        La tabla <code className="bg-slate-900 px-1 py-0.5 rounded font-mono text-emerald-400">rcd_waste_types</code> tiene activada la seguridad Row-Level Security (RLS) en Supabase y necesita una política para permitir lectura y escritura.
+                      </>
+                    ) : (
+                      errorMessage
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {(errorMessage.toLowerCase().includes('row-level security') || errorMessage.toLowerCase().includes('policy')) && (
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2 mt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-400">Ejecutar en Supabase (SQL Editor):</span>
+                    <button
+                      onClick={handleCopySql}
+                      className="inline-flex items-center space-x-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 px-2.5 py-1 rounded text-[11px] font-bold transition border border-emerald-500/30"
+                    >
+                      {copiedSql ? (
+                        <>
+                          <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>¡Copiado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copiar SQL</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <pre className="font-mono text-[11px] text-emerald-300 bg-slate-900 p-2 rounded overflow-x-auto whitespace-pre-wrap">
+                    {rlsFixSql}
+                  </pre>
+                </div>
+              )}
             </div>
           )}
 
