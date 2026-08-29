@@ -445,8 +445,20 @@ export class SupabaseService {
   // WASTE TYPES
   // ==========================================
 
+  private static generateUUID(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      const r = (Math.random() * 16) | 0,
+        v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
   private static mapWasteTypeToDB(wt: WasteType, excludeColumns: string[] = ['rcd_description']): Record<string, any> {
     const row: Record<string, any> = {
+      id: wt.id || this.generateUUID(),
       rcd_code: wt.code,
       rcd_name: wt.name,
       rcd_category: wt.category || 'Limpio',
@@ -467,6 +479,7 @@ export class SupabaseService {
 
   private static mapDBToWasteType(row: any): WasteType {
     return {
+      id: row.id || row.rcd_id || undefined,
       code: row.rcd_code || row.code || '',
       name: row.rcd_name || row.name || '',
       category: row.rcd_category || row.category || 'Limpio',
@@ -559,4 +572,5 @@ export class SupabaseService {
     }
   }
 }
+
 
