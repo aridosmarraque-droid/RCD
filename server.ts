@@ -120,20 +120,27 @@ async function startServer() {
         return res.status(400).json({ error: 'El campo "to" (destinatario) es obligatorio.' });
       }
 
-      const targetWebhook = webhookUrl || process.env.EMAIL_WEBHOOK_URL || process.env.WEBHOOK_URL;
       const targetApiKey = apiKey || process.env.EMAIL_API_KEY || process.env.RESEND_API_KEY;
-      const fromAddress = from || process.env.EMAIL_FROM_ADDRESS || 'notificaciones@plantarcd.es';
+      let targetWebhook = webhookUrl || process.env.EMAIL_WEBHOOK_URL || process.env.WEBHOOK_URL;
+      
+      // Auto-configure Resend endpoint if API Key is a Resend key
+      if (!targetWebhook && targetApiKey && targetApiKey.startsWith('re_')) {
+        targetWebhook = 'https://api.resend.com/emails';
+      }
+
+      const fromAddress = from || process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
 
       console.log(`[Email Webhook] Intentando enviar correo a: ${to} | Asunto: ${subject}`);
 
       if (targetWebhook) {
-        console.log(`[Email Webhook] Enviando petición a webhook externo: ${targetWebhook}`);
+        console.log(`[Email Webhook] Enviando petición a: ${targetWebhook}`);
         
         let payload: any;
         // Si es la API oficial de Resend (resend.com)
-        if (targetWebhook.includes('resend.com')) {
+        if (targetWebhook.includes('resend.com') || (targetApiKey && targetApiKey.startsWith('re_'))) {
+          const effectiveFrom = fromAddress.includes('@') ? fromAddress : 'onboarding@resend.dev';
           payload = {
-            from: fromAddress.includes('<') ? fromAddress : `Planta RCD <${fromAddress}>`,
+            from: effectiveFrom.includes('<') ? effectiveFrom : `Planta RCD <${effectiveFrom}>`,
             to: Array.isArray(to) ? to : [to],
             subject: subject || 'Notificación Planta RCD',
             html: html || '',
@@ -178,7 +185,7 @@ async function startServer() {
           return res.json({
             success: true,
             status: webhookResponse.status,
-            message: 'Correo enviado con éxito a través del Webhook.',
+            message: 'Correo enviado con éxito.',
             responseBody: responseText,
           });
         } else {
@@ -186,7 +193,7 @@ async function startServer() {
           return res.status(webhookResponse.status || 500).json({
             success: false,
             status: webhookResponse.status,
-            error: `El servidor del Webhook devolvió error ${webhookResponse.status}: ${responseText}`,
+            error: `El servidor de correo/Webhook devolvió error ${webhookResponse.status}: ${responseText}`,
           });
         }
       }
