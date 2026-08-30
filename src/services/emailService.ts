@@ -51,11 +51,10 @@ export class EmailService {
     }
 
     if (!this.isConfigured()) {
-      // Si no hay Webhook ni API Key configurados en Ajustes, omitir silenciosamente
-      return { success: true, message: 'Servicio de correo no configurado.' };
+      return { success: false, error: 'Servicio de correo no configurado. Introduzca una API Key de Resend (re_...) o una URL de Webhook en Ajustes.' };
     }
 
-    // Intento 1: Llamar al endpoint backend proxy /api/send-email si existe
+    // Intento 1: Llamar al endpoint backend proxy /api/send-email si existe (Express en dev o prod)
     try {
       const serverResponse = await fetch('/api/send-email', {
         method: 'POST',
@@ -75,21 +74,64 @@ export class EmailService {
 
       if (serverResponse.ok) {
         const data = await serverResponse.json();
-        return { success: true, message: data.message };
+        return { success: true, message: data.message || 'Correo enviado correctamente a través del servidor.' };
+      } else if (serverResponse.status !== 404) {
+        const errData = await serverResponse.json().catch(() => ({ error: 'Error del servidor' }));
+        console.warn('Respuesta de error en /api/send-email:', errData);
       }
     } catch {
-      // El backend proxy no está disponible en despliegues estáticos (ej: Vercel SPA)
+      // El backend proxy no está disponible en despliegues estáticos (ej: Vercel SPA) - procedemos al intento directo
     }
 
-    // Intento 2: Fallback directo desde el navegador hacia el Webhook configurado
-    try {
-      if (webhookUrl && webhookUrl.startsWith('http')) {
-        const response = await fetch(webhookUrl, {
+    // Intento 2: Envío directo a la API de Resend (si la API Key empieza por 're_' o webhook apunta a resend)
+    const isResend = (apiKey && apiKey.startsWith('re_')) || (webhookUrl && webhookUrl.includes('resend.com'));
+    if (isResend) {
+      try {
+        const resendEndpoint = 'https://api.resend.com/emails';
+        // Para pruebas en cuentas gratuitas de Resend sin dominio propio verificado, usar onboarding@resend.dev
+        const effectiveFrom = fromAddress.includes('@') ? fromAddress : 'onboarding@resend.dev';
+
+        const resendResponse = await fetch(resendEndpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+            Authorization: `Bearer ${apiKey}`,
           },
+          body: JSON.stringify({
+            from: effectiveFrom.includes('<') ? effectiveFrom : `Planta RCD <${effectiveFrom}>`,
+            to: [options.to],
+            subject: options.subject,
+            html: options.htmlBody,
+            text: options.textBody,
+          }),
+        });
+
+        const resendData = await resendResponse.json().catch(() => ({}));
+        if (resendResponse.ok) {
+          return { success: true, message: `Correo enviado exitosamente con Resend (ID: ${resendData.id || 'OK'})` };
+        } else {
+          const errMsg = resendData.message || resendData.error || `Error ${resendResponse.status} en Resend API`;
+          return { success: false, error: `Resend: ${errMsg}` };
+        }
+      } catch (err: any) {
+        console.warn('Error en llamada directa a Resend API:', err);
+        return { success: false, error: `Error de conexión con Resend: ${err.message}` };
+      }
+    }
+
+    // Intento 3: Envío directo a Webhook genérico (Zapier, Make, n8n, Supabase Edge Functions, Formspree, etc.)
+    if (webhookUrl && webhookUrl.startsWith('http')) {
+      try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (apiKey) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers,
           body: JSON.stringify({
             to: options.to,
             email: options.to,
@@ -99,19 +141,23 @@ export class EmailService {
             html: options.htmlBody,
             text: options.textBody,
             message: options.textBody,
+            timestamp: new Date().toISOString(),
           }),
         });
 
         if (response.ok) {
-          return { success: true };
+          return { success: true, message: 'Notificación enviada exitosamente al Webhook.' };
+        } else {
+          const textErr = await response.text().catch(() => '');
+          return { success: false, error: `El Webhook respondió con código ${response.status}: ${textErr}` };
         }
+      } catch (err: any) {
+        console.warn('Aviso enviando correo vía webhook:', err);
+        return { success: false, error: `Error de red al conectar con el Webhook: ${err.message}` };
       }
-
-      return { success: true };
-    } catch (err: any) {
-      console.warn('Aviso enviando correo vía webhook:', err);
-      return { success: true };
     }
+
+    return { success: false, error: 'No se pudo enviar el correo: configure una API Key válida de Resend o un Webhook en Ajustes.' };
   }
 
   static async sendAlbaranEmail(
