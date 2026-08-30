@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BarChart3,
   Users,
@@ -71,6 +71,10 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
   const [selectedCertToSign, setSelectedCertToSign] = useState<Certificate | null>(null);
   const [certFilterStatus, setCertFilterStatus] = useState<'all' | 'pending' | 'signed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    onRefreshData();
+  }, []);
 
   // Sorting state for Albaranes
   const [sortField, setSortField] = useState<SortField>('date');
