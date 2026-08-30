@@ -211,19 +211,28 @@ export class RCDService {
   }
 
   static async loadAlbaranesFromRemote(): Promise<Albaran[]> {
+    const localAlbaranes = this.getAlbaranes();
     if (SupabaseService.isConfigured()) {
       try {
         const remoteAlbaranes = await SupabaseService.fetchAlbaranes();
         if (remoteAlbaranes !== null && Array.isArray(remoteAlbaranes)) {
-          // Strictly mirror Supabase database: if Supabase has 0 albaranes, local becomes 0 albaranes
-          this.saveAlbaranesLocal(remoteAlbaranes);
-          return remoteAlbaranes;
+          // Merge remote albaranes with any local albaranes not yet synced to remote to prevent race conditions
+          const remoteIds = new Set(remoteAlbaranes.map((a) => a.id));
+          const remoteNums = new Set(remoteAlbaranes.map((a) => a.numAlbaran.trim().toLowerCase()));
+
+          const localOnly = localAlbaranes.filter(
+            (local) => !remoteIds.has(local.id) && !remoteNums.has(local.numAlbaran.trim().toLowerCase())
+          );
+
+          const merged = [...localOnly, ...remoteAlbaranes];
+          this.saveAlbaranesLocal(merged);
+          return merged;
         }
       } catch (err) {
         console.warn('Notice loading albaranes from Supabase:', err);
       }
     }
-    return this.getAlbaranes();
+    return localAlbaranes;
   }
 
   static saveAlbaranesLocal(albaranes: Albaran[]): void {
@@ -319,12 +328,26 @@ export class RCDService {
     albaranes.unshift(created);
     this.saveAlbaranesLocal(albaranes);
 
-    // Run Supabase sync and WhatsApp/Email notifications in a resilient non-blocking manner
+    // 1. Sync to Supabase first so loadAlbaranesFromRemote immediately has the new record
+    if (SupabaseService.isConfigured()) {
+      try {
+        await Promise.race([
+          SupabaseService.insertAlbaran(created),
+          new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout de sincronización con Supabase (5s)')), 5000)
+          ),
+        ]);
+      } catch (err) {
+        console.warn('Notice saving albaran to Supabase:', err);
+      }
+    }
+
+    // 2. Run WhatsApp/Email notifications for albarán entry in a non-blocking background task
     (async () => {
       let mobileSent = false;
       let emailSent = false;
 
-      // 1. WhatsApp notification via Ultramsg if client has mobile notification enabled
+      // WhatsApp notification via Ultramsg if client has mobile notification enabled
       if (client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
         try {
           const messageText = `🏭 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha registrado en planta un nuevo albarán de entrega:\n📜 *Nº Albarán:* ${created.numAlbaran}\n📦 *Residuo:* ${created.wasteTypeName} (${created.wasteTypeCode})\n⚖️ *Peso Neto:* ${created.quantityTons} toneladas\n🚚 *Matrícula:* ${created.licensePlate}\n📍 *Zona:* ${created.plantZone}\n📅 *Fecha/Hora:* ${created.date} ${created.time}\n\nGracias por su compromiso con la gestión sostenible de RCD.`;
@@ -343,7 +366,7 @@ export class RCDService {
         }
       }
 
-      // 2. Email notification via EmailService if client has notifyEmail enabled and an email address
+      // Email notification via EmailService if client has notifyEmail enabled and an email address
       if (client.notifyEmail && client.email && EmailService.isConfigured()) {
         try {
           const emailResult = await Promise.race([
@@ -365,20 +388,6 @@ export class RCDService {
         emailSent,
         timestamp: new Date().toISOString(),
       };
-
-      // 3. Sync to Supabase
-      if (SupabaseService.isConfigured()) {
-        try {
-          await Promise.race([
-            SupabaseService.insertAlbaran(created),
-            new Promise<void>((_, reject) =>
-              setTimeout(() => reject(new Error('Timeout de sincronización con Supabase (6s)')), 6000)
-            ),
-          ]);
-        } catch (err) {
-          console.warn('Notice saving albaran to Supabase:', err);
-        }
-      }
     })();
 
     return created;
@@ -539,38 +548,21 @@ export class RCDService {
       }
     }
 
-    // Send WhatsApp & Email notifications according to client preferences
-    const client = this.getClientById(payload.clientId);
-    if (client) {
-      if (client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
-        const msg = `📜 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha emitido un nuevo *Certificado de Valorización de RCD*:\n\n📑 *Nº Certificado:* ${newCertificate.certificateNumber}\n🏗️ *Obra / Promotor:* ${newCertificate.constructionSiteName}\n⚖️ *Total Certificado:* ${newCertificate.totalTons} toneladas\n🔐 *Código Verificación:* ${newCertificate.verificationCode}\n\nPuede consultar e descargar su certificado desde el Portal del Cliente.`;
-
-        await UltramsgService.sendWhatsApp(client.mobile, msg);
-      }
-
-      if (client.notifyEmail && client.email && EmailService.isConfigured()) {
-        const certSubject = `[Planta RCD] Solicitud de Certificado Registrada Nº ${newCertificate.certificateNumber}`;
-        const certText = `Estimado cliente ${client.name},\n\nSe ha registrado su solicitud de Certificado de Valorización de RCD:\n\n• Nº Certificado: ${newCertificate.certificateNumber}\n• Obra / Promotor: ${newCertificate.constructionSiteName}\n• Total Certificado: ${newCertificate.totalTons} Toneladas\n• Código Verificación: ${newCertificate.verificationCode}\n\nEl certificado estará disponible firmado digitalmente en breve. Se ha notificado al responsable de la empresa.`;
-        
-        await EmailService.sendEmail({
-          to: client.email,
-          subject: certSubject,
-          textBody: certText,
-          htmlBody: `<div style="font-family:sans-serif; background:#0f172a; color:#f8fafc; padding:20px; border-radius:12px;"><h2>📜 Planta de Residuos RCD</h2><p>Estimado cliente <strong>${client.name}</strong>,</p><p>Se ha registrado la solicitud del Certificado de Valorización de RCD:</p><ul><li><strong>Nº Certificado:</strong> ${newCertificate.certificateNumber}</li><li><strong>Obra / Promotor:</strong> ${newCertificate.constructionSiteName}</li><li><strong>Total Certificado:</strong> ${newCertificate.totalTons} Toneladas</li><li><strong>Estado:</strong> ⏳ Pendiente de Firma Digital</li></ul><p style="color:#f59e0b;">El certificado estará disponible con firma digital en breve. Se ha avisado al responsable de planta.</p></div>`,
-        });
-      }
-    }
-
-    // Notify manager for pending signature if email is configured
+    // When client creates/requests certificate: DO NOT notify client (notification only upon admin digital signature)
+    // Send pending signature notification to director/manager if email is configured
     if (EmailService.isConfigured()) {
-      await EmailService.sendPendingSignatureEmail({
-        certificateNumber: newCertificate.certificateNumber,
-        clientName: newCertificate.clientName,
-        thirdPartyName: newCertificate.thirdPartyName,
-        constructionSiteName: newCertificate.constructionSiteName,
-        totalTons: newCertificate.totalTons,
-        issueDate: newCertificate.issueDate,
-      });
+      try {
+        await EmailService.sendPendingSignatureEmail({
+          certificateNumber: newCertificate.certificateNumber,
+          clientName: newCertificate.clientName,
+          thirdPartyName: newCertificate.thirdPartyName,
+          constructionSiteName: newCertificate.constructionSiteName,
+          totalTons: newCertificate.totalTons,
+          issueDate: newCertificate.issueDate,
+        });
+      } catch (err) {
+        console.warn('Notice sending pending signature notice to admin:', err);
+      }
     }
 
     return newCertificate;
@@ -625,19 +617,34 @@ export class RCDService {
       }
     }
 
-    // Send notification email to client that the certificate is signed and available
-    if (EmailService.isConfigured()) {
-      const client = this.getClientById(updatedCert.clientId);
-      const clientEmail = client?.email || `${updatedCert.clientName.toLowerCase().replace(/[^a-z0-9]/g, '')}@empresa.es`;
-      
-      await EmailService.sendSignedCertificateEmail(clientEmail, {
-        certificateNumber: updatedCert.certificateNumber,
-        clientName: updatedCert.clientName,
-        thirdPartyName: updatedCert.thirdPartyName,
-        totalTons: updatedCert.totalTons,
-        signedAt: updatedCert.signedAt,
-        signerName: updatedCert.signerName,
-      });
+    // Client notification upon signing according to client preferences (WhatsApp, Email, or none)
+    const client = this.getClientById(updatedCert.clientId);
+    if (client) {
+      // 1. WhatsApp notification if client enabled mobile notification
+      if (client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
+        try {
+          const msg = `📜 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSu *Certificado de Valorización de RCD* ha sido *FIRMADO DIGITALMENTE* por la dirección técnica y ya está disponible:\n\n📑 *Nº Certificado:* ${updatedCert.certificateNumber}\n🏗️ *Obra / Promotor:* ${updatedCert.thirdPartyName || updatedCert.constructionSiteName}\n⚖️ *Total Certificado:* ${updatedCert.totalTons.toFixed(2)} toneladas\n✍️ *Firmante:* ${updatedCert.signerName}\n🔐 *Código CSV:* ${updatedCert.verificationCode}\n📅 *Fecha de Firma:* ${updatedCert.signedAt}\n\nPuede consultar y descargar su certificado oficial firmado desde el Portal de Clientes.`;
+          await UltramsgService.sendWhatsApp(client.mobile, msg);
+        } catch (err) {
+          console.warn('Notice sending signed cert WhatsApp:', err);
+        }
+      }
+
+      // 2. Email notification if client enabled email notification
+      if (client.notifyEmail && client.email && EmailService.isConfigured()) {
+        try {
+          await EmailService.sendSignedCertificateEmail(client.email, {
+            certificateNumber: updatedCert.certificateNumber,
+            clientName: updatedCert.clientName,
+            thirdPartyName: updatedCert.thirdPartyName,
+            totalTons: updatedCert.totalTons,
+            signedAt: updatedCert.signedAt,
+            signerName: updatedCert.signerName,
+          });
+        } catch (err) {
+          console.warn('Notice sending signed cert Email:', err);
+        }
+      }
     }
 
     return updatedCert;
