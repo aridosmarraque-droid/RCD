@@ -72,8 +72,8 @@ async function startServer() {
         ? imageBase64.split(',')[1]
         : imageBase64;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
+      const generatePromise = ai.models.generateContent({
+        model: 'gemini-3.7-flash',
         contents: {
           parts: [
             {
@@ -89,6 +89,13 @@ async function startServer() {
           responseMimeType: 'application/json',
         },
       });
+
+      // Strict 10-second timeout limit so the server never hangs
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Tiempo límite de reconocimiento OCR superado (10s)')), 10000)
+      );
+
+      const response = await Promise.race([generatePromise, timeoutPromise]);
 
       if (response.text) {
         try {
