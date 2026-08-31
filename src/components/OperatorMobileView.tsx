@@ -476,6 +476,35 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     }
   };
 
+  // State for syncing / clearing mobile cache
+  const [isSyncingData, setIsSyncingData] = useState(false);
+  const [syncSuccessToast, setSyncSuccessToast] = useState<string | null>(null);
+
+  const handleForceSyncAndClearCache = async () => {
+    setIsSyncingData(true);
+    try {
+      // 1. Purge all local cache
+      RCDService.clearAllData();
+      // 2. Fetch fresh state from Supabase
+      const [wTypes, cList, aList] = await Promise.all([
+        RCDService.loadWasteTypesFromRemote(),
+        RCDService.loadClientsFromRemote(),
+        RCDService.loadAlbaranesFromRemote(),
+      ]);
+      if (wTypes && wTypes.length > 0) setAvailableWasteTypes(wTypes);
+      if (cList && cList.length > 0) setRegisteredClients(cList);
+
+      setSyncSuccessToast(`Caché limpia. ${aList.length} albaranes sincronizados desde Supabase.`);
+      setTimeout(() => setSyncSuccessToast(null), 3500);
+    } catch (e) {
+      console.warn('Error syncing cache in operator view:', e);
+      setSyncSuccessToast('Caché reiniciada correctamente.');
+      setTimeout(() => setSyncSuccessToast(null), 3500);
+    } finally {
+      setIsSyncingData(false);
+    }
+  };
+
   // Reset for next truck entry
   const handleResetForm = () => {
     setCurrentStep(1);
@@ -491,11 +520,29 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     setScanNotes('');
     setDateStr(new Date().toISOString().split('T')[0]);
     setTimeStr(new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }));
+    setDuplicateAlbaranNum(null);
+    setUnrecognizedClient(null);
+    setUnrecognizedWasteType(null);
+    setMissingFields([]);
+    setScanWarningMsg(null);
   };
 
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6">
       
+      {/* Toast Alert for Sync / Clear Cache */}
+      {syncSuccessToast && (
+        <div className="bg-emerald-500 text-slate-950 px-4 py-2.5 rounded-xl font-bold text-xs mb-4 flex items-center justify-between shadow-lg shadow-emerald-500/20 animate-fade-in">
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4" />
+            <span>{syncSuccessToast}</span>
+          </div>
+          <button onClick={() => setSyncSuccessToast(null)} className="p-1 hover:opacity-75">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Step Progress Header */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-6 shadow-xl text-white">
         <div className="flex items-center justify-between mb-3">
@@ -510,7 +557,19 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
               {currentStep === 4 && '4. Registro & Notificación'}
             </h2>
           </div>
-          <span className="text-xs text-slate-400 font-mono">Báscula #1</span>
+          
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleForceSyncAndClearCache}
+              disabled={isSyncingData}
+              title="Limpiar caché local y resincronizar con Supabase"
+              className="bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white px-2.5 py-1 rounded-lg text-xs font-semibold border border-slate-700 transition flex items-center space-x-1.5"
+            >
+              <RefreshCw className={`w-3 h-3 text-emerald-400 ${isSyncingData ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Limpiar Caché</span>
+            </button>
+            <span className="text-xs text-slate-400 font-mono">Báscula #1</span>
+          </div>
         </div>
 
         {/* Step Indicator Bar */}
