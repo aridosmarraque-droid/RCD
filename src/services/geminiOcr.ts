@@ -104,10 +104,12 @@ async function resizeImageForOCR(dataUrl: string, maxDim = 1200): Promise<string
 
 /**
  * Perform OCR on an Albarán / SAP Ticket image using server API or client Gemini Vision.
+ * Implements a strict 10-second timeout to prevent the interface from hanging indefinitely.
  */
 export async function scanAlbaranWithGemini(
   imageBase64: string,
-  mimeType: string = 'image/jpeg'
+  mimeType: string = 'image/jpeg',
+  externalSignal?: AbortSignal
 ): Promise<Partial<OCRScanResult> | null> {
   let serverErrorMsg = '';
 
@@ -131,13 +133,24 @@ export async function scanAlbaranWithGemini(
     ? preparedBase64.split(',')[1]
     : preparedBase64;
 
-  // 1. Try server-side API endpoint first (/api/scan-albaran)
+  // 1. Try server-side API endpoint first (/api/scan-albaran) with strict 10-second timeout
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    // Link external signal if provided
+    if (externalSignal) {
+      externalSignal.addEventListener('abort', () => controller.abort());
+    }
+
     const response = await fetch('/api/scan-albaran', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ imageBase64: preparedBase64, mimeType: detectedMimeType }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (response.ok) {
       const data = await response.json();
@@ -150,8 +163,12 @@ export async function scanAlbaranWithGemini(
       console.warn('Server /api/scan-albaran error:', serverErrorMsg);
     }
   } catch (err: any) {
-    serverErrorMsg = err.message || 'Error de red al conectar con /api/scan-albaran';
-    console.warn('Network error calling /api/scan-albaran:', err);
+    if (err.name === 'AbortError') {
+      serverErrorMsg = 'Tiempo máximo de reconocimiento (10s) superado.';
+    } else {
+      serverErrorMsg = err.message || 'Error de conexión con el servicio OCR';
+    }
+    console.warn('OCR fetch warning:', serverErrorMsg);
   }
 
   // 2. Fallback to direct client-side Gemini Vision call if client API key is available
@@ -160,11 +177,11 @@ export async function scanAlbaranWithGemini(
     (typeof process !== 'undefined' && process.env && process.env.GEMINI_API_KEY) ||
     (window as any).GEMINI_API_KEY;
 
-  if (clientKey) {
+  if (clientKey && !externalSignal?.aborted) {
     try {
       const ai = new GoogleGenAI({ apiKey: clientKey });
-      const res = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
+      const clientCallPromise = ai.models.generateContent({
+        model: 'gemini-3.7-flash',
         contents: {
           parts: [
             {
@@ -181,7 +198,13 @@ export async function scanAlbaranWithGemini(
         },
       });
 
-      if (res.text) {
+      const clientTimeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout cliente (6s)')), 6000)
+      );
+
+      const res: any = await Promise.race([clientCallPromise, clientTimeout]);
+
+      if (res && res.text) {
         let cleanText = res.text.trim();
         if (cleanText.startsWith('```')) {
           cleanText = cleanText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
@@ -194,7 +217,7 @@ export async function scanAlbaranWithGemini(
     }
   }
 
-  // 3. Return initial fallback values with explicit guidance notes
+  // 3. Return initial fallback values with explicit guidance notes so the operator can fill manually
   return {
     numAlbaran: '',
     clientCode: '',
@@ -206,7 +229,7 @@ export async function scanAlbaranWithGemini(
     date: new Date().toISOString().split('T')[0],
     time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
     notes: serverErrorMsg
-      ? `Aviso: ${serverErrorMsg}. Introduzca los datos manualmente.`
-      : 'No se pudo leer automáticamente. Introduzca los datos manualmente.',
+      ? `Aviso: ${serverErrorMsg} Por favor, complete los datos manualmente.`
+      : 'No se pudieron detectar todos los datos del albarán. Por favor, introduzca los campos restantes a mano.',
   };
 }
