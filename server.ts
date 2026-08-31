@@ -3,20 +3,23 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
-const ALBARAN_PROMPT = `Analiza minuciosamente esta foto de un albarán, ticket de báscula o documento de entrega de materiales o residuos (RCD/SAP / Áridos Marraque).
-Extrae ÚNICAMENTE la información REAL visible en la imagen. NO inventes ni supongas ningún dato. Si un dato no figura o no es legible, déjalo como string vacío ("") o 0 para números.
+const ALBARAN_PROMPT = `Actúa como un sistema experto de visión artificial y OCR de alta precisión especializado en albaranes de pesaje en báscula, tickets de entrega y documentos de plantas de reciclaje RCD y canteras de áridos (SAP, Áridos Marraque, Holcim, Heidelberg, Cemex, etc.).
+
+Examina minuciosamente toda la foto del albarán o ticket (encabezado, campos de cliente, tabla de pesajes bruto/tara/neto, códigos LER, matrícula, número de albarán, fecha y hora).
+
+Extrae ÚNICAMENTE la información REAL visible en la imagen. NO inventes ningún dato. Si un dato no figura o no es legible, déjalo como string vacío ("") o 0 para números.
 
 Devuelve la información en formato JSON estricto con los siguientes campos:
 {
-  "numAlbaran": "Número o código del albarán/ticket visible en la imagen (ej: 2607584)",
-  "clientCode": "Código de cliente SAP si aparece en el documento (ej: C0048, C0086)",
+  "numAlbaran": "Número o código del albarán/ticket visible (ej: 2607584, ALB-2026-08493, 2026/0129). Busca 'Nº Albarán', 'Albarán:', 'Nº Ticket', 'Ticket:', 'Nº:', 'Doc:', etc.",
+  "clientCode": "Código de cliente SAP si aparece en el documento (ej: C0048, C0086, C-00100, 4801)",
   "clientName": "Razón social del cliente LIMPIA, sin incluir el código de cliente SAP entre corchetes o paréntesis (ej: 'ANGEL ARTES SANCHEZ S.L.' en lugar de '[C0048] ANGEL ARTES SANCHEZ S.L.')",
-  "wasteTypeCode": "Código LER del residuo si aparece expresamente (ej: 17 01 01, 17 01 02, 17 01 07, 17 05 04, 17 09 04, 17 02 01)",
-  "wasteTypeName": "Denominación o descripción del residuo impresa en el papel (ej: TN DE HORMIGON)",
-  "quantityTons": Número decimal exacto con las Toneladas Netas (ej: 19.8). Si aparece en kg, conviértelo dividiendo por 1000. Si no hay peso o toneladas, usa 0,
-  "licensePlate": "Matrícula del vehículo/camión si figura en la imagen (ej: 9523HTN/R3043BCG)",
-  "date": "Fecha en formato YYYY-MM-DD si figura (ej: 2026-08-10)",
-  "time": "Hora en formato HH:MM si figura",
+  "wasteTypeCode": "Código LER del residuo (ej: 17 01 01, 17 01 02, 17 01 07, 17 05 04, 17 09 04, 17 02 01, 17 03 02). Si figura sin espacios como 170101, sepáralo como '17 01 01'",
+  "wasteTypeName": "Denominación o descripción del residuo o material impresa en el papel (ej: TN DE HORMIGON, Hormigón Limpio, RCD Mezcla, Tierras y piedras)",
+  "quantityTons": Número decimal exacto con las Toneladas Netas (ej: 19.84). IMPORTANTE: Si el peso neto aparece en kilogramos (ej: '19.840 kg', '24560 KG'), DIVÍDELO entre 1000 para obtener toneladas (19.84, 24.56). Si no hay peso, usa 0,
+  "licensePlate": "Matrícula del vehículo/camión si figura en la imagen (ej: 9523HTN, 8492-KZX, 9523HTN/R3043BCG)",
+  "date": "Fecha en formato YYYY-MM-DD si figura (ej: 2026-08-10, convertir 10/08/2026 -> 2026-08-10)",
+  "time": "Hora en formato HH:MM si figura (ej: 10:35)",
   "notes": "Cualquier texto adicional o nota relevante presente en el documento"
 }`;
 
@@ -90,9 +93,9 @@ async function startServer() {
         },
       });
 
-      // Strict 10-second timeout limit so the server never hangs
+      // 25-second timeout limit to allow multimodal vision model full inference
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Tiempo límite de reconocimiento OCR superado (10s)')), 10000)
+        setTimeout(() => reject(new Error('Tiempo límite de reconocimiento OCR superado (25s)')), 25000)
       );
 
       const response = await Promise.race([generatePromise, timeoutPromise]);
@@ -102,6 +105,11 @@ async function startServer() {
           let cleanText = response.text.trim();
           if (cleanText.startsWith('```')) {
             cleanText = cleanText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+          }
+          // Also look for JSON object boundaries if surrounding text exists
+          const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            cleanText = jsonMatch[0];
           }
           const parsed = JSON.parse(cleanText);
           return res.json(parsed);
