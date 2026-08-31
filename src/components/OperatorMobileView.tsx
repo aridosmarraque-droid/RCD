@@ -32,7 +32,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
 
   // Step 1: SAP Albaran OCR Data
   const [isScanning, setIsScanning] = useState(false);
-  const [scanCountdown, setScanCountdown] = useState<number>(10);
+  const [scanCountdown, setScanCountdown] = useState<number>(25);
   const [scanWarningMsg, setScanWarningMsg] = useState<string | null>(null);
   const [missingFields, setMissingFields] = useState<string[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -68,6 +68,28 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
   // Verification modal state after scanning ticket
   const [showVerificationModal, setShowVerificationModal] = useState(false);
 
+  // State for available waste types and clients dynamically synchronized
+  const [availableWasteTypes, setAvailableWasteTypes] = useState<WasteType[]>(RCDService.getWasteTypes());
+  const [registeredClients, setRegisteredClients] = useState<any[]>(RCDService.getClients());
+
+  // Dynamic remote data sync on mount
+  useEffect(() => {
+    const fetchLatest = async () => {
+      try {
+        const [wTypes, cList] = await Promise.all([
+          RCDService.loadWasteTypesFromRemote(),
+          RCDService.loadClientsFromRemote(),
+          RCDService.loadAlbaranesFromRemote(),
+        ]);
+        if (wTypes && wTypes.length > 0) setAvailableWasteTypes(wTypes);
+        if (cList && cList.length > 0) setRegisteredClients(cList);
+      } catch (e) {
+        console.warn('Notice syncing remote data in mobile operator view:', e);
+      }
+    };
+    fetchLatest();
+  }, []);
+
   // Clean up timers on unmount
   useEffect(() => {
     return () => {
@@ -85,11 +107,11 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
       clearInterval(countdownTimerRef.current);
     }
     setIsScanning(false);
-    setScanWarningMsg('Escaneo detenido. Puede introducir o verificar los datos del albarán manualmente a continuación.');
+    setScanWarningMsg('Escaneo detenido por el operador. Puede introducir o verificar los datos del albarán manualmente a continuación.');
     setMissingFields(['numAlbaran', 'clientName', 'quantityTons', 'wasteTypeCode']);
   };
 
-  // Handle image upload / camera capture for SAP ticket OCR with instant compression
+  // Handle image upload / camera capture for SAP ticket OCR with high-definition compression
   const handleAlbaranImageSelected = async (file: File) => {
     // Clear previous scan values so data from old tickets never persists
     setNumAlbaran('');
@@ -103,11 +125,11 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     setIsScanning(true);
 
     try {
-      // 1. Compress high-resolution camera photo (e.g. 10MB -> ~120KB)
-      const compressedBase64 = await compressImage(file, { maxDimension: 1200, quality: 0.78 });
+      // 1. Compress high-resolution camera photo (e.g. 10MB -> ~250KB preserving high definition on small ticket text)
+      const compressedBase64 = await compressImage(file, { maxDimension: 1800, quality: 0.88 });
       setAlbaranPhoto(compressedBase64);
 
-      // 2. Send lightweight compressed image to OCR
+      // 2. Send high-resolution compressed image to OCR
       await runGeminiOCR(compressedBase64, 'image/jpeg');
     } catch (err) {
       console.warn('Notice processing albaran photo:', err);
@@ -127,16 +149,12 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
   const [unrecognizedClient, setUnrecognizedClient] = useState<{ code: string; name: string } | null>(null);
   const [duplicateAlbaranNum, setDuplicateAlbaranNum] = useState<string | null>(null);
 
-  // Available waste types and clients from storage
-  const availableWasteTypes = RCDService.getWasteTypes();
-  const registeredClients = RCDService.getClients();
-
   // Run Gemini API Vision OCR on the real SAP Albarán photo
   const runGeminiOCR = async (imageBase64: string, mimeType: string) => {
     setIsScanning(true);
     setScanWarningMsg(null);
     setMissingFields([]);
-    setScanCountdown(10);
+    setScanCountdown(25);
 
     // Setup abort controller with external timeout
     if (abortControllerRef.current) {
@@ -145,11 +163,11 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Start 10s countdown interval
+    // Start 25s countdown interval
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
     }
-    let secondsLeft = 10;
+    let secondsLeft = 25;
     countdownTimerRef.current = setInterval(() => {
       secondsLeft -= 1;
       setScanCountdown(Math.max(0, secondsLeft));
@@ -575,7 +593,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                 <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
                   <div
                     className="bg-purple-500 h-full rounded-full transition-all duration-1000"
-                    style={{ width: `${Math.max(10, ((10 - scanCountdown) / 10) * 100)}%` }}
+                    style={{ width: `${Math.max(5, ((25 - scanCountdown) / 25) * 100)}%` }}
                   />
                 </div>
 
