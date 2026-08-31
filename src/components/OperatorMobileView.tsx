@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Camera,
   FileText,
@@ -6,13 +6,16 @@ import {
   CheckCircle2,
   Sparkles,
   AlertCircle,
+  AlertTriangle,
   Clock,
   MapPin,
   Send,
   Loader2,
   Check,
   RefreshCw,
-  Info
+  Info,
+  X,
+  Edit3
 } from 'lucide-react';
 import { Albaran, OCRScanResult, WasteType } from '../types/rcd';
 import { OFFICIAL_WASTE_TYPES, RCDService } from '../services/rcdStorage';
@@ -29,6 +32,12 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
 
   // Step 1: SAP Albaran OCR Data
   const [isScanning, setIsScanning] = useState(false);
+  const [scanCountdown, setScanCountdown] = useState<number>(10);
+  const [scanWarningMsg, setScanWarningMsg] = useState<string | null>(null);
+  const [missingFields, setMissingFields] = useState<string[]>([]);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const countdownTimerRef = useRef<any>(null);
+
   const [albaranPhoto, setAlbaranPhoto] = useState<string | null>(null);
   const [numAlbaran, setNumAlbaran] = useState('');
   const [clientCode, setClientCode] = useState('');
@@ -59,6 +68,27 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
   // Verification modal state after scanning ticket
   const [showVerificationModal, setShowVerificationModal] = useState(false);
 
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+    };
+  }, []);
+
+  // Cancel scanning and let the operator fill manually immediately
+  const cancelScanning = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+    }
+    setIsScanning(false);
+    setScanWarningMsg('Escaneo detenido. Puede introducir o verificar los datos del albarán manualmente a continuación.');
+    setMissingFields(['numAlbaran', 'clientName', 'quantityTons', 'wasteTypeCode']);
+  };
+
   // Handle image upload / camera capture for SAP ticket OCR with instant compression
   const handleAlbaranImageSelected = async (file: File) => {
     // Clear previous scan values so data from old tickets never persists
@@ -67,7 +97,9 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     setClientName('');
     setQuantityTons(0);
     setLicensePlate('');
-    setScanNotes('Optimizando y analizando albarán...');
+    setScanNotes('Optimizando y analizando albarán con IA...');
+    setScanWarningMsg(null);
+    setMissingFields([]);
     setIsScanning(true);
 
     try {
@@ -102,10 +134,34 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
   // Run Gemini API Vision OCR on the real SAP Albarán photo
   const runGeminiOCR = async (imageBase64: string, mimeType: string) => {
     setIsScanning(true);
+    setScanWarningMsg(null);
+    setMissingFields([]);
+    setScanCountdown(10);
+
+    // Setup abort controller with external timeout
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // Start 10s countdown interval
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+    }
+    let secondsLeft = 10;
+    countdownTimerRef.current = setInterval(() => {
+      secondsLeft -= 1;
+      setScanCountdown(Math.max(0, secondsLeft));
+      if (secondsLeft <= 0) {
+        clearInterval(countdownTimerRef.current);
+      }
+    }, 1000);
+
     let extractedData: Partial<OCRScanResult> | null = null;
 
     try {
-      extractedData = await scanAlbaranWithGemini(imageBase64, mimeType);
+      extractedData = await scanAlbaranWithGemini(imageBase64, mimeType, controller.signal);
 
       if (extractedData) {
         const extNum = extractedData.numAlbaran ? extractedData.numAlbaran.trim() : '';
@@ -170,6 +226,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
         }
 
         // Waste Type dynamic matching
+        let matchedWaste = false;
         if (extractedData.wasteTypeCode || extractedData.wasteTypeName) {
           const wasteCode = (extractedData.wasteTypeCode || '').trim();
           const wasteName = (extractedData.wasteTypeName || '').trim();
@@ -184,6 +241,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
           if (matched) {
             setWasteTypeCode(matched.code);
             setWasteTypeName(matched.name);
+            matchedWaste = true;
           } else if (wasteCode || wasteName) {
             // Unrecognized waste type extracted from albarán! Prompt operator to create it
             const newCodeStr = wasteCode || '17 09 04';
@@ -191,20 +249,39 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
             setWasteTypeCode(newCodeStr);
             setWasteTypeName(newNameStr);
             setUnrecognizedWasteType({ code: newCodeStr, name: newNameStr });
+            matchedWaste = true;
           }
         }
 
-        // Show verification modal window for operator review
-        setShowVerificationModal(true);
+        // Compute missing fields to notify operator clearly
+        const missing: string[] = [];
+        if (!extNum) missing.push('numAlbaran');
+        if (!cName) missing.push('clientName');
+        if (!qty || qty <= 0) missing.push('quantityTons');
+        if (!matchedWaste && !wasteTypeCode) missing.push('wasteTypeCode');
+
+        setMissingFields(missing);
+
+        if (missing.length > 0) {
+          setScanWarningMsg(
+            '⚠️ Reconocimiento parcial: Algunos datos no se pudieron leer con total claridad de la foto. Por favor, introduzca o complete los campos destacados en naranja a continuación.'
+          );
+        } else {
+          // If everything was read with complete certainty, show verification modal
+          setShowVerificationModal(true);
+        }
       } else {
-        setScanNotes('No se pudo leer el albarán por OCR. Complete o revise los datos manualmente.');
-        setShowVerificationModal(true);
+        setScanWarningMsg('Tiempo de escaneo agotado o no se pudo leer el albarán. Por favor, complete los datos manualmente a continuación.');
+        setMissingFields(['numAlbaran', 'clientName', 'quantityTons', 'wasteTypeCode']);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Notice running OCR:', err);
-      setScanNotes('Error de lectura OCR. Introduzca los datos manualmente.');
-      setShowVerificationModal(true);
+      setScanWarningMsg('Error o tiempo límite de escaneo superado. Por favor, introduzca los datos manualmente.');
+      setMissingFields(['numAlbaran', 'clientName', 'quantityTons', 'wasteTypeCode']);
     } finally {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
       setIsScanning(false);
     }
   };
@@ -477,14 +554,62 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
               </label>
             </div>
 
-            {/* OCR Processing Loader */}
+            {/* OCR Processing Loader with active countdown & cancel button */}
             {isScanning && (
-              <div className="bg-purple-950/40 border border-purple-800/60 rounded-xl p-4 my-4 flex items-center space-x-3 text-purple-200 animate-pulse">
-                <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
-                <div>
-                  <div className="font-bold text-sm">Extrayendo datos de SAP con IA Gemini...</div>
-                  <div className="text-xs text-purple-300">Leyendo tipo de residuo, toneladas, cliente y nº de albarán.</div>
+              <div className="bg-slate-950 border border-purple-500/50 rounded-2xl p-4 my-4 shadow-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3 text-purple-300">
+                    <Loader2 className="w-5 h-5 text-purple-400 animate-spin flex-shrink-0" />
+                    <div>
+                      <div className="font-bold text-sm text-white">Analizando albarán con IA Gemini...</div>
+                      <div className="text-xs text-purple-300">Extrayendo cliente, residuo, toneladas y nº de albarán.</div>
+                    </div>
+                  </div>
+                  <div className="bg-purple-500/20 border border-purple-500/40 px-3 py-1 rounded-xl text-center">
+                    <span className="text-xs font-mono font-bold text-purple-300">{scanCountdown}s</span>
+                    <span className="text-[9px] text-purple-400 block font-sans">máx</span>
+                  </div>
                 </div>
+
+                {/* Animated progress bar */}
+                <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
+                  <div
+                    className="bg-purple-500 h-full rounded-full transition-all duration-1000"
+                    style={{ width: `${Math.max(10, ((10 - scanCountdown) / 10) * 100)}%` }}
+                  />
+                </div>
+
+                {/* Cancel button to immediately fill manually */}
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={cancelScanning}
+                    className="text-xs text-rose-300 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 px-3 py-1.5 rounded-lg font-bold transition flex items-center space-x-1.5"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Cancelar y rellenar a mano</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* OCR Notice / Incomplete recognition warning banner */}
+            {scanWarningMsg && !isScanning && (
+              <div className="bg-amber-950/40 border border-amber-500/50 rounded-2xl p-4 my-3 text-amber-200 text-xs flex items-start justify-between gap-3 shadow-lg">
+                <div className="flex items-start space-x-2.5">
+                  <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-white text-xs sm:text-sm mb-0.5">Atención en el Reconocimiento</div>
+                    <p className="text-slate-300 text-xs leading-relaxed">{scanWarningMsg}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setScanWarningMsg(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             )}
 
@@ -499,9 +624,9 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                 <div className="flex-1 text-xs space-y-1">
                   <div className="flex items-center text-emerald-400 font-bold">
                     <CheckCircle2 className="w-4 h-4 mr-1" />
-                    <span>Albarán digitalizado correctamente</span>
+                    <span>Albarán capturado</span>
                   </div>
-                  <p className="text-slate-400 text-[11px]">Imagen escaneada y sincronizada con el motor OCR.</p>
+                  <p className="text-slate-400 text-[11px]">Imagen digitalizada. Complete o confirme los datos antes de continuar.</p>
                 </div>
               </div>
             )}
@@ -509,22 +634,39 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
 
           {/* Form with extracted & editable values */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
-            <h4 className="font-bold text-white text-sm border-b border-slate-800 pb-2">
-              Verificación y Datos del Registro
+            <h4 className="font-bold text-white text-sm border-b border-slate-800 pb-2 flex items-center justify-between">
+              <span>Verificación y Datos del Registro</span>
+              <span className="text-xs text-slate-400 font-normal">Campos con * obligatorios</span>
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Num Albarán */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Nº de Albarán SAP *
-                </label>
+              <div className={missingFields.includes('numAlbaran') ? 'p-2 rounded-xl bg-amber-500/10 border border-amber-500/40' : ''}>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Nº de Albarán SAP *
+                  </label>
+                  {missingFields.includes('numAlbaran') && (
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
+                      ✏️ Indicar a mano
+                    </span>
+                  )}
+                </div>
                 <input
                   type="text"
                   value={numAlbaran}
-                  onChange={(e) => setNumAlbaran(e.target.value)}
+                  onChange={(e) => {
+                    setNumAlbaran(e.target.value);
+                    if (e.target.value.trim()) {
+                      setMissingFields((prev) => prev.filter((f) => f !== 'numAlbaran'));
+                    }
+                  }}
                   placeholder="p.ej. ALB-2026-08493"
-                  className="w-full bg-slate-950 text-white font-mono font-bold text-sm border border-slate-800 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none"
+                  className={`w-full bg-slate-950 text-white font-mono font-bold text-sm border ${
+                    missingFields.includes('numAlbaran')
+                      ? 'border-amber-500 ring-2 ring-amber-500/20'
+                      : 'border-slate-800'
+                  } rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none`}
                 />
               </div>
 
@@ -543,12 +685,16 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
               </div>
 
               {/* Cliente SAP */}
-              <div className="sm:col-span-2">
+              <div className={missingFields.includes('clientName') ? 'sm:col-span-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/40' : 'sm:col-span-2'}>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-semibold text-slate-300">
                     Cliente / Transportista *
                   </label>
-                  {clientName && RCDService.isClientRegistered(clientName, clientCode) ? (
+                  {missingFields.includes('clientName') ? (
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
+                      ✏️ Indicar a mano o seleccionar
+                    </span>
+                  ) : clientName && RCDService.isClientRegistered(clientName, clientCode) ? (
                     <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 font-semibold">
                       ✓ Registrado
                     </span>
@@ -576,6 +722,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                       if (selected) {
                         setClientName(selected.name);
                         setClientCode(selected.code);
+                        setMissingFields((prev) => prev.filter((f) => f !== 'clientName'));
                       }
                     }}
                     className="w-full bg-slate-950 text-slate-300 font-medium text-xs border border-slate-800 rounded-xl px-3 py-2 focus:border-emerald-500 focus:outline-none mb-1"
@@ -599,19 +746,35 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                     <input
                       type="text"
                       value={clientName}
-                      onChange={(e) => setClientName(e.target.value)}
+                      onChange={(e) => {
+                        setClientName(e.target.value);
+                        if (e.target.value.trim()) {
+                          setMissingFields((prev) => prev.filter((f) => f !== 'clientName'));
+                        }
+                      }}
                       placeholder="Razón Social del Cliente"
-                      className="col-span-2 bg-slate-950 text-white font-semibold text-xs sm:text-sm border border-slate-800 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none"
+                      className={`col-span-2 bg-slate-950 text-white font-semibold text-xs sm:text-sm border ${
+                        missingFields.includes('clientName')
+                          ? 'border-amber-500 ring-2 ring-amber-500/20'
+                          : 'border-slate-800'
+                      } rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none`}
                     />
                   </div>
                 </div>
               </div>
 
               {/* Tipo de Residuo (LER Code) */}
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Tipo de Residuo RCD (Código LER) *
-                </label>
+              <div className={missingFields.includes('wasteTypeCode') ? 'sm:col-span-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/40' : 'sm:col-span-2'}>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Tipo de Residuo RCD (Código LER) *
+                  </label>
+                  {missingFields.includes('wasteTypeCode') && (
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
+                      ✏️ Seleccionar residuo
+                    </span>
+                  )}
+                </div>
                 <select
                   value={wasteTypeCode}
                   onChange={(e) => {
@@ -619,11 +782,19 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                     if (matched) {
                       setWasteTypeCode(matched.code);
                       setWasteTypeName(matched.name);
+                      setMissingFields((prev) => prev.filter((f) => f !== 'wasteTypeCode'));
                     } else {
                       setWasteTypeCode(e.target.value);
+                      if (e.target.value) {
+                        setMissingFields((prev) => prev.filter((f) => f !== 'wasteTypeCode'));
+                      }
                     }
                   }}
-                  className="w-full bg-slate-950 text-white font-medium text-xs sm:text-sm border border-slate-800 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none"
+                  className={`w-full bg-slate-950 text-white font-medium text-xs sm:text-sm border ${
+                    missingFields.includes('wasteTypeCode')
+                      ? 'border-amber-500 ring-2 ring-amber-500/20'
+                      : 'border-slate-800'
+                  } rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none`}
                 >
                   {availableWasteTypes.length === 0 && !wasteTypeCode && (
                     <option value="">-- Sin tipos de residuo en base de datos --</option>
@@ -642,16 +813,34 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
               </div>
 
               {/* Cantidad Toneladas */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Cantidad (Toneladas - t) *
-                </label>
+              <div className={missingFields.includes('quantityTons') ? 'p-2 rounded-xl bg-amber-500/10 border border-amber-500/40' : ''}>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Cantidad (Toneladas - t) *
+                  </label>
+                  {missingFields.includes('quantityTons') && (
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
+                      ✏️ Indicar toneladas
+                    </span>
+                  )}
+                </div>
                 <input
                   type="number"
                   step="0.05"
-                  value={quantityTons}
-                  onChange={(e) => setQuantityTons(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-950 text-emerald-400 font-bold text-lg border border-slate-800 rounded-xl px-3 py-2 focus:border-emerald-500 focus:outline-none"
+                  value={quantityTons || ''}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || 0;
+                    setQuantityTons(val);
+                    if (val > 0) {
+                      setMissingFields((prev) => prev.filter((f) => f !== 'quantityTons'));
+                    }
+                  }}
+                  placeholder="0.00"
+                  className={`w-full bg-slate-950 text-emerald-400 font-bold text-lg border ${
+                    missingFields.includes('quantityTons')
+                      ? 'border-amber-500 ring-2 ring-amber-500/20'
+                      : 'border-slate-800'
+                  } rounded-xl px-3 py-2 focus:border-emerald-500 focus:outline-none`}
                 />
               </div>
 
