@@ -7,33 +7,41 @@ import { compressImage } from '../utils/imageCompressor';
 export const OFFICIAL_WASTE_TYPES: WasteType[] = [];
 
 const STORAGE_KEYS = {
-  CLIENTS: 'rcd_app_clients_v4',
-  ALBARANES: 'rcd_app_albaranes_v4',
-  CERTIFICATES: 'rcd_app_certificates_v4',
+  CLIENTS: 'rcd_app_clients_v5',
+  ALBARANES: 'rcd_app_albaranes_v5',
+  CERTIFICATES: 'rcd_app_certificates_v5',
   WASTE_TYPES: 'rcd_app_waste_types_v5',
-  USERS: 'rcd_app_users_v4',
-  CURRENT_USER: 'rcd_app_current_user_v4',
+  USERS: 'rcd_app_users_v5',
+  CURRENT_USER: 'rcd_app_current_user_v5',
 };
 
-// Purge any legacy demo or older cache versions from localStorage
+// Purge all legacy demo or older cache versions from localStorage
 try {
-  const legacyKeys = [
-    'rcd_app_waste_types_v4',
-    'rcd_app_waste_types_v3',
-    'rcd_app_waste_types_v2',
-    'rcd_app_waste_types_v1',
-    'rcd_app_albaranes_v1',
-    'rcd_app_albaranes_v2',
-    'rcd_app_albaranes_v3',
-    'rcd_app_clients_v1',
-    'rcd_app_clients_v2',
-    'rcd_app_clients_v3',
-    'rcd_app_certificates_v1',
-    'rcd_app_certificates_v2',
-    'rcd_app_certificates_v3',
-    'rcd_albaranes_demo',
-  ];
-  for (const k of legacyKeys) {
+  const activeKeys = new Set([
+    STORAGE_KEYS.CLIENTS,
+    STORAGE_KEYS.ALBARANES,
+    STORAGE_KEYS.CERTIFICATES,
+    STORAGE_KEYS.WASTE_TYPES,
+    STORAGE_KEYS.USERS,
+    STORAGE_KEYS.CURRENT_USER,
+    'rcd_supabase_url',
+    'rcd_supabase_anon_key',
+    'rcd_ultramsg_instance_id',
+    'rcd_ultramsg_token',
+    'rcd_email_webhook_url',
+    'rcd_email_api_key',
+    'rcd_email_from_address',
+    'rcd_email_signer_address',
+  ]);
+  
+  const toDelete: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && (key.startsWith('rcd_') || key.includes('albaran') || key.includes('client') || key.includes('cert')) && !activeKeys.has(key)) {
+      toDelete.push(key);
+    }
+  }
+  for (const k of toDelete) {
     localStorage.removeItem(k);
   }
 } catch {
@@ -211,28 +219,18 @@ export class RCDService {
   }
 
   static async loadAlbaranesFromRemote(): Promise<Albaran[]> {
-    const localAlbaranes = this.getAlbaranes();
     if (SupabaseService.isConfigured()) {
       try {
         const remoteAlbaranes = await SupabaseService.fetchAlbaranes();
         if (remoteAlbaranes !== null && Array.isArray(remoteAlbaranes)) {
-          // Merge remote albaranes with any local albaranes not yet synced to remote to prevent race conditions
-          const remoteIds = new Set(remoteAlbaranes.map((a) => a.id));
-          const remoteNums = new Set(remoteAlbaranes.map((a) => a.numAlbaran.trim().toLowerCase()));
-
-          const localOnly = localAlbaranes.filter(
-            (local) => !remoteIds.has(local.id) && !remoteNums.has(local.numAlbaran.trim().toLowerCase())
-          );
-
-          const merged = [...localOnly, ...remoteAlbaranes];
-          this.saveAlbaranesLocal(merged);
-          return merged;
+          this.saveAlbaranesLocal(remoteAlbaranes);
+          return remoteAlbaranes;
         }
       } catch (err) {
         console.warn('Notice loading albaranes from Supabase:', err);
       }
     }
-    return localAlbaranes;
+    return this.getAlbaranes();
   }
 
   static saveAlbaranesLocal(albaranes: Albaran[]): void {
@@ -733,12 +731,31 @@ export class RCDService {
   }
 
   static clearAllData(): void {
-    localStorage.removeItem(STORAGE_KEYS.CLIENTS);
-    localStorage.removeItem(STORAGE_KEYS.ALBARANES);
-    localStorage.removeItem(STORAGE_KEYS.CERTIFICATES);
-    localStorage.removeItem(STORAGE_KEYS.WASTE_TYPES);
-    localStorage.removeItem(STORAGE_KEYS.USERS);
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    try {
+      const configKeys = new Set([
+        'rcd_supabase_url',
+        'rcd_supabase_anon_key',
+        'rcd_ultramsg_instance_id',
+        'rcd_ultramsg_token',
+        'rcd_email_webhook_url',
+        'rcd_email_api_key',
+        'rcd_email_from_address',
+        'rcd_email_signer_address',
+      ]);
+
+      const toRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && !configKeys.has(key)) {
+          toRemove.push(key);
+        }
+      }
+      for (const k of toRemove) {
+        localStorage.removeItem(k);
+      }
+    } catch (e) {
+      console.warn('Notice clearing local storage cache:', e);
+    }
   }
 
   // ===============================================
