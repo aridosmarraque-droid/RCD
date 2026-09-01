@@ -23,8 +23,8 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
   const [thirdPartyName, setThirdPartyName] = useState('Promociones e Inmuebles del Sur S.A.');
   const [thirdPartyCif, setThirdPartyCif] = useState('A-28901234');
   const [constructionSiteName, setConstructionSiteName] = useState('Residencial Vista Verde - 32 Viviendas');
-  const [constructionSiteAddress, setConstructionSiteAddress] = useState('Av. de la Palmera 45, Sevilla');
-  const [issuerName, setIssuerName] = useState('Servicios Medioambientales Planta RCD');
+  const [constructionSiteAddress, setConstructionSiteAddress] = useState('Avda. Federico García Lorca, Almería');
+  const [issuerName, setIssuerName] = useState('Áridos Marraque S.L.');
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
@@ -177,7 +177,7 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
                   type="text"
                   value={constructionSiteAddress}
                   onChange={(e) => setConstructionSiteAddress(e.target.value)}
-                  placeholder="ej. Av. de la Constitución 12, Sevilla"
+                  placeholder="ej. Avda. Federico García Lorca, Almería"
                   className="w-full bg-slate-900 text-white text-xs border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none"
                 />
               </div>
