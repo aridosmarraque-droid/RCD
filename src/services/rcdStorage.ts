@@ -593,8 +593,8 @@ export class RCDService {
       ...certs[certIndex],
       status: 'Emitido',
       signatureData,
-      signerName: signerName.trim() || 'Director Técnico Planta RCD',
-      signerNif: signerNif.trim() || 'B-91029384',
+      signerName: signerName.trim() || 'Áridos Marraque S.L. - Dirección Técnica',
+      signerNif: signerNif.trim() || 'B04117818',
       signedAt: signedDateStr,
       fnmtCertIssuer: fnmtDetails?.fnmtCertIssuer || 'FNMT-RCM / AC Representación',
       fnmtCertSerial: fnmtDetails?.fnmtCertSerial || '4B:A1:88:C2:9F:D5:E0:18',
@@ -658,8 +658,8 @@ export class RCDService {
     return this.signCertificate(
       certId,
       '',
-      signerName || 'Dirección Técnica / Apoderado (Firma Digital FNMT Acrobat)',
-      signerNif || 'B-91029384',
+      signerName || 'Áridos Marraque S.L. - Dirección Técnica (Firma Digital FNMT Acrobat)',
+      signerNif || 'B04117818',
       {
         fnmtCertIssuer: 'Fábrica Nacional de Moneda y Timbre (FNMT-RCM) - Documento PAdES',
         fnmtCertSerial: 'Firma Acrobat / AutoFirma',
