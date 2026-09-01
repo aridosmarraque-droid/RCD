@@ -152,8 +152,8 @@ export function openPrintableCertificate(
             : ''
         }
         <div style="font-size: 8.5px; color: #0F172A; line-height: 1.35; margin-top: 3px;">
-          <div><strong>Firmante:</strong> ${certificate.signerName || certificate.issuerName || 'Director Técnico'}</div>
-          <div><strong>NIF/CIF:</strong> ${certificate.signerNif || 'B-91029384'} | <strong>Emisor:</strong> ${certificate.fnmtCertIssuer || 'AC Representación FNMT-RCM'}</div>
+          <div><strong>Firmante:</strong> ${certificate.signerName || certificate.issuerName || 'Áridos Marraque S.L. - Dirección Técnica'}</div>
+          <div><strong>NIF/CIF:</strong> ${certificate.signerNif || 'B04117818'} | <strong>Emisor:</strong> ${certificate.fnmtCertIssuer || 'AC Representación FNMT-RCM'}</div>
           <div><strong>Serie FNMT:</strong> <span style="font-family: monospace; font-size: 8px;">${certificate.fnmtCertSerial || '3C:8E:29:A1:B4:77:F0:92'}</span></div>
           <div><strong>Fecha Sellado:</strong> ${certificate.signedAt}</div>
           <div style="color: #047857; font-weight: bold; margin-top: 2px;">✓ CSV: <span style="font-family: monospace;">${certificate.verificationCode}</span> | SHA256withRSA</div>
@@ -205,8 +205,8 @@ export function openPrintableCertificate(
         <!-- Header Annex -->
         <div class="annex-header">
           <div>
-            <div class="title" style="font-size: 14px;">PLANTA DE VALORIZACIÓN Y RECICLAJE RCD</div>
-            <div class="subtitle" style="font-size: 10px;">Gestor Autorizado RCD-SE/2024-00912 | Control de Entrada y Trazabilidad</div>
+            <div class="title" style="font-size: 13px;">ÁRIDOS MARRAQUE S.L. — PLANTA DE VALORIZACIÓN Y RECICLAJE RCD</div>
+            <div class="subtitle" style="font-size: 9.5px;">NIMA Gestor (E02): 0400008639 | NIMA Centro (G04): 0400003843 | CIF: B04117818 | Rioja (Almería)</div>
           </div>
           <div style="text-align: right;">
             <div class="cert-num" style="font-size: 12px; padding: 4px 10px;">ANEXO DOCUMENTAL ${index + 1} DE ${attachedAlbaranes.length}</div>
@@ -596,9 +596,9 @@ export function openPrintableCertificate(
         <!-- Header -->
         <div class="header">
           <div>
-            <div class="title">PLANTA DE VALORIZACIÓN Y RECICLAJE RCD</div>
-            <div class="subtitle">Gestor Autorizado de Residuos RCD-SE/2024-00912 | NIF: B-91029384</div>
-            <div class="subtitle">Ctra. Isla Mayor km 4.5, 41080 Sevilla | Email: certificados@plantarcd.es</div>
+            <div class="title">ÁRIDOS MARRAQUE S.L. — PLANTA DE VALORIZACIÓN Y RECICLAJE RCD</div>
+            <div class="subtitle">Gestor Autorizado de Residuos RCD | NIMA Gestor (E02): 0400008639 | NIMA Centro (G04): 0400003843 | CIF: B04117818</div>
+            <div class="subtitle">Avda. Federico García Lorca s/n, 04260 Rioja (Almería) | Tel: 950 31 21 31 | Email: administracion@marraque.es</div>
           </div>
           <div style="text-align: right;">
             <div class="cert-num">${certificate.certificateNumber}</div>
@@ -700,4 +700,3 @@ export function openPrintableCertificate(
   printWindow.document.write(htmlContent);
   printWindow.document.close();
 }
-
