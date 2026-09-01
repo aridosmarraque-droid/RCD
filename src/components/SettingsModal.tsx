@@ -565,7 +565,7 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
                   </label>
                   <input
                     type="email"
-                    placeholder="notificaciones@plantarcd.es"
+                    placeholder="administracion@marraque.es"
                     value={emailFromAddress}
                     onChange={(e) => setEmailFromAddress(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
@@ -578,7 +578,7 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
                   </label>
                   <input
                     type="email"
-                    placeholder="direccion@plantarcd.es"
+                    placeholder="administracion@marraque.es"
                     value={emailSignerAddress}
                     onChange={(e) => setEmailSignerAddress(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
