@@ -18,8 +18,8 @@ export class EmailService {
   static getConfig(): EmailConfig {
     const webhookUrl = localStorage.getItem(EMAIL_KEYS.WEBHOOK_URL) || (import.meta as any).env?.VITE_EMAIL_WEBHOOK_URL || '';
     const apiKey = localStorage.getItem(EMAIL_KEYS.API_KEY) || (import.meta as any).env?.VITE_EMAIL_API_KEY || '';
-    const fromAddress = localStorage.getItem(EMAIL_KEYS.FROM_ADDRESS) || 'notificaciones@plantarcd.es';
-    const signerAddress = localStorage.getItem(EMAIL_KEYS.SIGNER_ADDRESS) || 'direccion@plantarcd.es';
+    const fromAddress = localStorage.getItem(EMAIL_KEYS.FROM_ADDRESS) || 'administracion@marraque.es';
+    const signerAddress = localStorage.getItem(EMAIL_KEYS.SIGNER_ADDRESS) || 'administracion@marraque.es';
 
     return { webhookUrl, apiKey, fromAddress, signerAddress };
   }
@@ -27,9 +27,9 @@ export class EmailService {
   static saveConfig(webhookUrl: string, apiKey: string, fromAddress: string, signerAddress?: string): void {
     localStorage.setItem(EMAIL_KEYS.WEBHOOK_URL, webhookUrl.trim());
     localStorage.setItem(EMAIL_KEYS.API_KEY, apiKey.trim());
-    localStorage.setItem(EMAIL_KEYS.FROM_ADDRESS, fromAddress.trim() || 'notificaciones@plantarcd.es');
+    localStorage.setItem(EMAIL_KEYS.FROM_ADDRESS, fromAddress.trim() || 'administracion@marraque.es');
     if (signerAddress !== undefined) {
-      localStorage.setItem(EMAIL_KEYS.SIGNER_ADDRESS, signerAddress.trim() || 'direccion@plantarcd.es');
+      localStorage.setItem(EMAIL_KEYS.SIGNER_ADDRESS, signerAddress.trim() || 'administracion@marraque.es');
     }
   }
 
