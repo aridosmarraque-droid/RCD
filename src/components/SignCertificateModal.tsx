@@ -44,8 +44,8 @@ export const SignCertificateModal: React.FC<SignCertificateModalProps> = ({
 
   // FNMT Digital Stamp Details (Web mode)
   const [fnmtCertType, setFnmtCertType] = useState<'representacion' | 'empleado' | 'persona_fisica'>('representacion');
-  const [signerName, setSignerName] = useState('Manuel Marraque - Director Técnico y Apoderado');
-  const [signerNif, setSignerNif] = useState('B-91029384');
+  const [signerName, setSignerName] = useState('Áridos Marraque S.L. - Dirección Técnica');
+  const [signerNif, setSignerNif] = useState('B04117818');
   const [fnmtCertSerial, setFnmtCertSerial] = useState('3C:8E:29:A1:B4:77:F0:92:E4:10');
   const [fnmtCertIssuer, setFnmtCertIssuer] = useState('AC Representación FNMT-RCM (Fábrica Nacional de Moneda y Timbre)');
   const [signatureMode, setSignatureMode] = useState<'fnmt' | 'fnmt_manual'>('fnmt');
@@ -564,7 +564,7 @@ export const SignCertificateModal: React.FC<SignCertificateModalProps> = ({
                       type="text"
                       value={signerNif}
                       onChange={(e) => setSignerNif(e.target.value)}
-                      placeholder="B-91029384"
+                      placeholder="B04117818"
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                     />
                   </div>
