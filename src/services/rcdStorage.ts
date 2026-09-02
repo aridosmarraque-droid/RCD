@@ -138,7 +138,10 @@ export class RCDService {
     notifyEmail: boolean,
     notifyMobile: boolean,
     email?: string,
-    mobile?: string
+    mobile?: string,
+    name?: string,
+    code?: string,
+    cif?: string
   ): Promise<Client | null> {
     const clients = this.getClients();
     const index = clients.findIndex((c) => c.id === id);
@@ -150,6 +153,27 @@ export class RCDService {
       notifyMobile,
       ...(email !== undefined ? { email } : {}),
       ...(mobile !== undefined ? { mobile } : {}),
+      ...(name !== undefined && name.trim() !== '' ? { name: name.trim() } : {}),
+      ...(code !== undefined && code.trim() !== '' ? { code: code.trim() } : {}),
+      ...(cif !== undefined && cif.trim() !== '' ? { cif: cif.trim().toUpperCase() } : {}),
+    };
+
+    clients[index] = updated;
+    await this.saveClients(clients);
+    return updated;
+  }
+
+  static async updateClient(id: string, clientData: Partial<Client>): Promise<Client> {
+    const clients = this.getClients();
+    const index = clients.findIndex((c) => c.id === id);
+    if (index === -1) {
+      throw new Error(`Cliente con ID ${id} no encontrado.`);
+    }
+
+    const updated: Client = {
+      ...clients[index],
+      ...clientData,
+      id, // Preserve ID
     };
 
     clients[index] = updated;
@@ -443,6 +467,53 @@ export class RCDService {
     })();
 
     return created;
+  }
+
+  static async updateAlbaran(id: string, updates: Partial<Albaran>): Promise<Albaran> {
+    const albaranes = this.getAlbaranes();
+    const index = albaranes.findIndex((a) => a.id === id);
+    if (index === -1) {
+      throw new Error(`Albarán con ID ${id} no encontrado.`);
+    }
+
+    const currentAlbaran = albaranes[index];
+
+    // Restricción estricta: Si un albarán ya se ha adjuntado a un certificado ya no puede ser modificado
+    if (currentAlbaran.certified) {
+      throw new Error(
+        `El albarán Nº ${currentAlbaran.numAlbaran} ya está certificado (${currentAlbaran.certificateNumber || 'en certificado'}) y no puede ser modificado.`
+      );
+    }
+
+    // Check for duplicate albaran number if changed
+    if (updates.numAlbaran && updates.numAlbaran.trim().toLowerCase() !== currentAlbaran.numAlbaran.trim().toLowerCase()) {
+      const isDup = albaranes.some(
+        (a) => a.id !== id && a.numAlbaran.trim().toLowerCase() === updates.numAlbaran!.trim().toLowerCase()
+      );
+      if (isDup) {
+        throw new Error(`El número de albarán "${updates.numAlbaran}" ya existe en el sistema.`);
+      }
+    }
+
+    const updated: Albaran = {
+      ...currentAlbaran,
+      ...updates,
+      id, // Preserve original ID
+      certified: false, // Ensure certified stays false
+    };
+
+    albaranes[index] = updated;
+    this.saveAlbaranesLocal(albaranes);
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        await SupabaseService.upsertAlbaran(updated);
+      } catch (err) {
+        console.warn('Notice updating albaran in Supabase:', err);
+      }
+    }
+
+    return updated;
   }
 
   static async deleteAlbaran(id: string): Promise<void> {
