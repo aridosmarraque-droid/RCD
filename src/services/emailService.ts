@@ -38,24 +38,82 @@ export class EmailService {
     return Boolean(webhookUrl || apiKey);
   }
 
+  /**
+   * Imprime un diagnóstico completo del servicio de correo en la consola del navegador (F12)
+   */
+  static printDiagnosticToConsole(): void {
+    const config = this.getConfig();
+    const isConfig = this.isConfigured();
+
+    let provider = 'Sin configurar';
+    if (config.apiKey.startsWith('re_') || config.webhookUrl.includes('resend.com')) {
+      provider = 'Resend (resend.com)';
+    } else if (config.apiKey.startsWith('xkeysib-') || config.webhookUrl.includes('brevo.com')) {
+      provider = 'Brevo / Sendinblue';
+    } else if (config.apiKey.startsWith('SG.') || config.webhookUrl.includes('sendgrid.com')) {
+      provider = 'SendGrid';
+    } else if (config.webhookUrl.startsWith('http')) {
+      provider = 'Webhook Personalizado / Make / Zapier / Apps Script';
+    }
+
+    console.group('%c📧 [Diagnóstico del Servicio de Correo RCD]', 'color: #10b981; font-weight: bold; font-size: 13px;');
+    console.log('%cEstado de Configuración:', 'font-weight: bold;', isConfig ? '✅ CONFIGURADO' : '❌ NO CONFIGURADO');
+    console.log('• Proveedor Detectado:', provider);
+    console.log('• Correo Remitente (From):', config.fromAddress);
+    console.log('• Correo Responsable Firma:', config.signerAddress);
+    console.log('• Webhook URL:', config.webhookUrl || '(No configurado)');
+    console.log('• Clave API:', config.apiKey ? `${config.apiKey.slice(0, 6)}... (${config.apiKey.length} caracteres)` : '(No configurada)');
+    
+    if (!isConfig) {
+      console.warn(
+        '%c⚠️ Para enviar correos reales:\n' +
+        '1. Vaya al botón ⚙️ Ajustes -> pestaña "Correo".\n' +
+        '2. Elija un proveedor gratuito como Brevo (300 emails/día gratis sin necesidad de verificar dominio DNS) o Resend.\n' +
+        '3. Pegue su Clave API o URL de Webhook y pulse "Guardar Configuración de Correo".',
+        'color: #f59e0b; font-size: 11px;'
+      );
+    }
+    console.groupEnd();
+  }
+
   static async sendEmail(options: {
     to: string;
     subject: string;
     htmlBody: string;
     textBody: string;
-  }): Promise<{ success: boolean; error?: string; message?: string }> {
+  }): Promise<{ success: boolean; error?: string; message?: string; provider?: string }> {
     const { webhookUrl, apiKey, fromAddress } = this.getConfig();
 
+    console.group(`%c📧 [Email RCD] Enviando Correo a: ${options.to}`, 'color: #38bdf8; font-weight: bold;');
+    console.log('• Asunto:', options.subject);
+    console.log('• Remitente:', fromAddress);
+    console.log('• Configuración activa:', {
+      hasWebhook: Boolean(webhookUrl),
+      hasApiKey: Boolean(apiKey),
+      webhookUrl: webhookUrl || '(ninguno)',
+    });
+
     if (!options.to || !options.to.includes('@')) {
-      return { success: false, error: 'Dirección de correo electrónico no válida' };
+      const err = 'Dirección de correo electrónico del destinatario no válida o vacía.';
+      console.error('❌ Error de validación:', err);
+      console.groupEnd();
+      return { success: false, error: err };
     }
 
     if (!this.isConfigured()) {
-      return { success: false, error: 'Servicio de correo no configurado. Introduzca una API Key de Resend (re_...) o una URL de Webhook en Ajustes.' };
+      const err = 'Servicio de correo no configurado. Introduzca una Clave API (Resend, Brevo, SendGrid) o Webhook en la pestaña "Correo" de Ajustes.';
+      console.warn('⚠️ Servicio no configurado:', err);
+      console.info(
+        '%c💡 Solución rápida: En Ajustes -> Correo, inserte una API Key de Brevo (xkeysib-...) o Resend (re_...) para habilitar envíos reales inmediatos.',
+        'color: #10b981;'
+      );
+      console.groupEnd();
+      return { success: false, error: err };
     }
 
-    // Intento 1: Llamar al endpoint backend proxy /api/send-email si existe (Express en dev o prod)
+    // 1. Envío a través del endpoint backend del servidor (/api/send-email)
     try {
+      console.log('📡 Conectando con el servidor proxy /api/send-email...');
       const serverResponse = await fetch('/api/send-email', {
         method: 'POST',
         headers: {
@@ -72,92 +130,49 @@ export class EmailService {
         }),
       });
 
-      if (serverResponse.ok) {
-        const data = await serverResponse.json();
-        return { success: true, message: data.message || 'Correo enviado correctamente a través del servidor.' };
-      } else if (serverResponse.status !== 404) {
-        const errData = await serverResponse.json().catch(() => ({ error: 'Error del servidor' }));
-        console.warn('Respuesta de error en /api/send-email:', errData);
-      }
-    } catch {
-      // El backend proxy no está disponible en despliegues estáticos (ej: Vercel SPA) - procedemos al intento directo
-    }
+      const data = await serverResponse.json().catch(() => ({}));
 
-    // Intento 2: Envío directo a la API de Resend (si la API Key empieza por 're_' o webhook apunta a resend)
-    const isResend = (apiKey && apiKey.startsWith('re_')) || (webhookUrl && webhookUrl.includes('resend.com'));
-    if (isResend) {
-      try {
-        const resendEndpoint = 'https://api.resend.com/emails';
-        // Para pruebas en cuentas gratuitas de Resend sin dominio propio verificado, usar onboarding@resend.dev
-        const effectiveFrom = fromAddress.includes('@') ? fromAddress : 'onboarding@resend.dev';
-
-        const resendResponse = await fetch(resendEndpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            from: effectiveFrom.includes('<') ? effectiveFrom : `Planta RCD <${effectiveFrom}>`,
-            to: [options.to],
-            subject: options.subject,
-            html: options.htmlBody,
-            text: options.textBody,
-          }),
-        });
-
-        const resendData = await resendResponse.json().catch(() => ({}));
-        if (resendResponse.ok) {
-          return { success: true, message: `Correo enviado exitosamente con Resend (ID: ${resendData.id || 'OK'})` };
-        } else {
-          const errMsg = resendData.message || resendData.error || `Error ${resendResponse.status} en Resend API`;
-          return { success: false, error: `Resend: ${errMsg}` };
-        }
-      } catch (err: any) {
-        console.warn('Error en llamada directa a Resend API:', err);
-        return { success: false, error: `Error de conexión con Resend: ${err.message}` };
-      }
-    }
-
-    // Intento 3: Envío directo a Webhook genérico (Zapier, Make, n8n, Supabase Edge Functions, Formspree, etc.)
-    if (webhookUrl && webhookUrl.startsWith('http')) {
-      try {
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
+      if (serverResponse.ok && data.success) {
+        console.log('%c✅ [Email RCD] Correo entregado con éxito al proveedor:', 'color: #10b981; font-weight: bold;', data);
+        console.groupEnd();
+        return {
+          success: true,
+          provider: data.provider,
+          message: data.message || `Correo enviado correctamente a ${options.to}`,
         };
-        if (apiKey) {
-          headers['Authorization'] = `Bearer ${apiKey}`;
-        }
-
-        const response = await fetch(webhookUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            to: options.to,
-            email: options.to,
-            recipient: options.to,
-            from: fromAddress,
-            subject: options.subject,
-            html: options.htmlBody,
-            text: options.textBody,
-            message: options.textBody,
-            timestamp: new Date().toISOString(),
-          }),
+      } else {
+        const errorMsg = data.error || `Error ${serverResponse.status} al procesar el correo en el servidor`;
+        console.error('%c❌ [Email RCD] Error devuelto por el proveedor de correo:', 'color: #ef4444; font-weight: bold;', {
+          status: serverResponse.status,
+          error: errorMsg,
+          raw: data,
         });
 
-        if (response.ok) {
-          return { success: true, message: 'Notificación enviada exitosamente al Webhook.' };
-        } else {
-          const textErr = await response.text().catch(() => '');
-          return { success: false, error: `El Webhook respondió con código ${response.status}: ${textErr}` };
+        // Consejos específicos según el error detectado
+        if (errorMsg.includes('domain') || errorMsg.includes('verified') || serverResponse.status === 403) {
+          console.warn(
+            '%c💡 Solución para Resend:\n' +
+            'Si usa Resend con cuenta gratuita sin dominio verificado:\n' +
+            '• Cambie el correo emisor en Ajustes a "onboarding@resend.dev"\n' +
+            '• O use Brevo (sendinblue), que permite enviar desde cualquier correo personal/empresa sin configurar DNS.',
+            'color: #f59e0b;'
+          );
         }
-      } catch (err: any) {
-        console.warn('Aviso enviando correo vía webhook:', err);
-        return { success: false, error: `Error de red al conectar con el Webhook: ${err.message}` };
-      }
-    }
 
-    return { success: false, error: 'No se pudo enviar el correo: configure una API Key válida de Resend o un Webhook en Ajustes.' };
+        console.groupEnd();
+        return {
+          success: false,
+          error: errorMsg,
+        };
+      }
+    } catch (fetchErr: any) {
+      console.error('❌ [Email RCD] Error de red conectando con el servidor:', fetchErr);
+      console.groupEnd();
+      return {
+        success: false,
+        error: `Error de red al conectar con el servidor: ${fetchErr.message || 'Sin conexión'}`,
+      };
+    }
   }
 
   static async sendAlbaranEmail(
