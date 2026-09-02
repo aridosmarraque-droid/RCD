@@ -19,12 +19,14 @@ import {
   ArrowDown,
   Calendar,
   Filter,
-  Plus
+  Plus,
+  Edit3
 } from 'lucide-react';
 import { Albaran, Certificate, Client, RCDUser, WasteType } from '../types/rcd';
 import { ClientsDirectoryView } from './ClientsDirectoryView';
 import { UsersManagementView } from './UsersManagementView';
 import { PhotoLightboxModal } from './PhotoLightboxModal';
+import { EditAlbaranModal } from './EditAlbaranModal';
 import { openPrintableCertificate, openOrDownloadCertificate, downloadSignedPdfFile } from '../utils/certificatePdf';
 import { IssueCertificateModal } from './IssueCertificateModal';
 import { WasteTypesConfigModal } from './WasteTypesConfigModal';
@@ -66,6 +68,7 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
 }) => {
   const [adminTab, setAdminTab] = useState<'analytics' | 'albaranes' | 'clients' | 'certificates' | 'users'>('analytics');
   const [selectedPhotoAlbaran, setSelectedPhotoAlbaran] = useState<Albaran | null>(null);
+  const [selectedAlbaranToEdit, setSelectedAlbaranToEdit] = useState<Albaran | null>(null);
   const [selectedClientForCert, setSelectedClientForCert] = useState<Client | null>(null);
   const [showWasteTypesModal, setShowWasteTypesModal] = useState(false);
   const [selectedCertToSign, setSelectedCertToSign] = useState<Certificate | null>(null);
@@ -564,23 +567,45 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                           )}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {alb.certified ? (
-                            <button
-                              disabled
-                              title="No se puede eliminar: El albarán tiene un certificado emitido."
-                              className="p-1.5 text-slate-600 bg-slate-900 rounded cursor-not-allowed border border-slate-800"
-                            >
-                              <Trash2 className="w-4 h-4 opacity-40" />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleDeleteAlbaran(alb)}
-                              title="Eliminar Albarán"
-                              className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded transition"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
+                          <div className="flex items-center justify-center space-x-1.5">
+                            {/* Edit Button (Admin Only) */}
+                            {alb.certified ? (
+                              <button
+                                disabled
+                                title="No se puede editar: El albarán ya fue incluido en un certificado oficial."
+                                className="p-1.5 text-slate-600 bg-slate-900 rounded cursor-not-allowed border border-slate-800"
+                              >
+                                <Lock className="w-3.5 h-3.5 opacity-40" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setSelectedAlbaranToEdit(alb)}
+                                title="Editar Albarán (Solo Administrador)"
+                                className="p-1.5 text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-lg transition"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            {/* Delete Button */}
+                            {alb.certified ? (
+                              <button
+                                disabled
+                                title="No se puede eliminar: El albarán tiene un certificado emitido."
+                                className="p-1.5 text-slate-600 bg-slate-900 rounded cursor-not-allowed border border-slate-800"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 opacity-40" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleDeleteAlbaran(alb)}
+                                title="Eliminar Albarán"
+                                className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -744,6 +769,20 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
           users={users}
           clients={clients}
           onUsersChanged={onRefreshData}
+        />
+      )}
+
+      {/* Edit Albaran Modal (Admin Only) */}
+      {selectedAlbaranToEdit && (
+        <EditAlbaranModal
+          albaran={selectedAlbaranToEdit}
+          clients={clients}
+          wasteTypes={configuredWasteTypes}
+          onClose={() => setSelectedAlbaranToEdit(null)}
+          onSaved={() => {
+            onRefreshData();
+            setSelectedAlbaranToEdit(null);
+          }}
         />
       )}
 
