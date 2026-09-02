@@ -208,12 +208,21 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
         cName = cName.replace(/^\[[A-Z0-9\-]+\]\s*/i, '').replace(/^[\-:\.]\s*/, '').trim();
         cCode = cCode.replace(/^\[|\]$/g, '').trim();
 
-        setClientName(cName);
-        setClientCode(cCode);
-
-        // Check if client is registered in system directory
-        if (cName && !RCDService.isClientRegistered(cName, cCode)) {
-          setUnrecognizedClient({ code: cCode || 'C-NEW', name: cName });
+        // Intento de auto-matching con clientes existentes en la base de datos por CIF, Código o Nombre
+        const clientCif = (extractedData as any).clientCif || '';
+        const existingMatchedClient = RCDService.findMatchingClient(cName, cCode, clientCif);
+        if (existingMatchedClient) {
+          cName = existingMatchedClient.name;
+          cCode = existingMatchedClient.code;
+          setClientName(cName);
+          setClientCode(cCode);
+          setUnrecognizedClient(null);
+        } else {
+          setClientName(cName);
+          setClientCode(cCode);
+          if (cName && !RCDService.isClientRegistered(cName, cCode, clientCif)) {
+            setUnrecognizedClient({ code: cCode || 'C-NEW', name: cName });
+          }
         }
         
         const qty = Number(extractedData.quantityTons);
