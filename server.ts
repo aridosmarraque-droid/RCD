@@ -3,24 +3,57 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
-const ALBARAN_PROMPT = `Actúa como un sistema experto de visión artificial y OCR de alta precisión especializado en albaranes de pesaje en báscula, tickets de entrega y documentos de plantas de reciclaje RCD y canteras de áridos (SAP, Áridos Marraque, Holcim, Heidelberg, Cemex, etc.).
+const ALBARAN_PROMPT = `Actúa como un sistema experto de OCR y visión artificial de máxima precisión especializado en los albaranes de entrega y pesaje de la empresa "ÁRIDOS MARRAQUE S.L." (y plantas de valorización de RCD / canteras de áridos).
 
-Examina minuciosamente toda la foto del albarán o ticket (encabezado, campos de cliente, tabla de pesajes bruto/tara/neto, códigos LER, matrícula, número de albarán, fecha y hora).
+Todos los albaranes siguen una estructura visual estándar idéntica dividida en las siguientes zonas:
 
-Extrae ÚNICAMENTE la información REAL visible en la imagen. NO inventes ningún dato. Si un dato no figura o no es legible, déjalo como string vacío ("") o 0 para números.
+1. ENCABEZADO SUPERIOR:
+   - "ARIDOS MARRAQUE S.L." (B04117818, Avda. Federico Garcia Lorca s/n 04260 Rioja).
+   - Puede figurar la palabra "Original" en la esquina superior derecha.
 
-Devuelve la información en formato JSON estricto con los siguientes campos:
+2. BLOQUE SUPERIOR IZQUIERDO (Bajo el título "Albaran de Entrega"):
+   - "Fecha : DD/MM/YY" o "DD/MM/YYYY" (ejemplo: "Fecha : 02/09/26" significa 02 de Septiembre de 2026 -> convertir a formato ISO "2026-09-02").
+   - "Nº Albaran : XXXXXXX" -> Número de 7 dígitos (ej: "2607873", "2607584").
+   - "Cód. Cliente : CXXXX" -> Letra C seguida de 4 dígitos (ej: "C0096", "C0048", "C0012", "C0100").
+
+3. BLOQUE SUPERIOR DERECHO (Datos del Cliente / Empresa):
+   - Primera línea en negrita: Razón social del Cliente (ej: "MATERIALES DE CONSTRUCCION NEGI", "ANGEL ARTES SANCHEZ S.L.").
+   - Líneas intermedias: Dirección de la empresa (ej: "C/RAMON Y CAJAL, Nº6 \n 04250 PECHINA \n ALMERIA").
+   - Última línea: "ID fiscal : ESBXXXXXXXX" o "BXXXXXXXX" (ej: "ESB04435194", "B04221487").
+
+4. TABLA CENTRAL DE MATERIAL / PESAJE:
+   - Cabeceras de columnas: | Núm | Descripción | Bruto | Tara | Cantidad |
+   - Fila de datos del residuo:
+     • "Núm": Código interno (ej: "GRVA2", "HORM1", "ESCO1", "RCD01").
+     • "Descripción": Nombre del residuo con su código LER entre paréntesis.
+       Ejemplo: "TN DE ESCOMBRO SUCIO (LER 17 09 04)" o "TN DE HORMIGON (LER 17 01 01)" o "TIERRAS Y PIEDRAS (LER 17 05 04)".
+       -> Extrae el Código LER exacto de dentro del paréntesis: "17 09 04", "17 01 01", "17 01 02", "17 01 07", "17 05 04", "17 02 01", etc.
+       -> Extrae la denominación limpia: "TN DE ESCOMBRO SUCIO" (o el texto que figure antes de LER).
+     • "Bruto": Peso bruto en toneladas (ej: 37,62).
+     • "Tara": Peso tara del camión en toneladas (ej: 13,6).
+     • "Cantidad": PESO NETO / TONELADAS NETAS (ej: "24,02" -> 24.02). En estos albaranes la columna "Cantidad" es SIEMPRE el peso neto en toneladas.
+
+5. BLOQUE "Datos Transporte" (Debajo de la tabla):
+   - "Matricula : XXXX-XXX / RXXXX-XXX" (ej: "1885HGF/R0549BDR", "1885HGF", "9523HTN"). Puede ser tractora y remolque separados por barra.
+   - "Transportista : [CIF] [NOMBRE EMPRESA O CONDUCTOR]" (ej: "B04221487 ANGEL ARTES SANCHEZ S.L.").
+   - "Tara camion : 13,600 TONELADAS".
+
+6. BLOQUE "Datos Destino":
+   - Población u obra (ej: "PECHINA", "ALMERIA", "RIOJA").
+
+Extrae la información con absoluta fidelidad y devuélvela ÚNICAMENTE en este formato JSON estricto:
 {
-  "numAlbaran": "Número o código del albarán/ticket visible (ej: 2607584, ALB-2026-08493, 2026/0129). Busca 'Nº Albarán', 'Albarán:', 'Nº Ticket', 'Ticket:', 'Nº:', 'Doc:', etc.",
-  "clientCode": "Código de cliente SAP si aparece en el documento (ej: C0048, C0086, C-00100, 4801)",
-  "clientName": "Razón social del cliente LIMPIA, sin incluir el código de cliente SAP entre corchetes o paréntesis (ej: 'ANGEL ARTES SANCHEZ S.L.' en lugar de '[C0048] ANGEL ARTES SANCHEZ S.L.')",
-  "wasteTypeCode": "Código LER del residuo (ej: 17 01 01, 17 01 02, 17 01 07, 17 05 04, 17 09 04, 17 02 01, 17 03 02). Si figura sin espacios como 170101, sepáralo como '17 01 01'",
-  "wasteTypeName": "Denominación o descripción del residuo o material impresa en el papel (ej: TN DE HORMIGON, Hormigón Limpio, RCD Mezcla, Tierras y piedras)",
-  "quantityTons": Número decimal exacto con las Toneladas Netas (ej: 19.84). IMPORTANTE: Si el peso neto aparece en kilogramos (ej: '19.840 kg', '24560 KG'), DIVÍDELO entre 1000 para obtener toneladas (19.84, 24.56). Si no hay peso, usa 0,
-  "licensePlate": "Matrícula del vehículo/camión si figura en la imagen (ej: 9523HTN, 8492-KZX, 9523HTN/R3043BCG)",
-  "date": "Fecha en formato YYYY-MM-DD si figura (ej: 2026-08-10, convertir 10/08/2026 -> 2026-08-10)",
-  "time": "Hora en formato HH:MM si figura (ej: 10:35)",
-  "notes": "Cualquier texto adicional o nota relevante presente en el documento"
+  "numAlbaran": "Número de 7 dígitos del albarán (ej: 2607873)",
+  "clientCode": "Código de cliente (ej: C0096)",
+  "clientName": "Razón social del cliente (ej: MATERIALES DE CONSTRUCCION NEGI)",
+  "clientCif": "ID fiscal / NIF / CIF del cliente si figura (ej: ESB04435194)",
+  "wasteTypeCode": "Código LER con espacios (ej: 17 09 04, 17 01 01, 17 01 07, 17 05 04)",
+  "wasteTypeName": "Nombre o descripción del residuo impreso (ej: TN DE ESCOMBRO SUCIO)",
+  "quantityTons": 24.02,
+  "licensePlate": "Matrícula completa del vehículo (ej: 1885HGF/R0549BDR)",
+  "date": "2026-09-02",
+  "time": "HH:MM si figura, o string vacío",
+  "notes": "Transportista o destino si figura (ej: Destino: PECHINA | Transportista: ANGEL ARTES SANCHEZ S.L.)"
 }`;
 
 async function startServer() {
@@ -75,38 +108,53 @@ async function startServer() {
         ? imageBase64.split(',')[1]
         : imageBase64;
 
-      const generatePromise = ai.models.generateContent({
-        model: 'gemini-3.7-flash',
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType: detectedMimeType,
-              },
-            },
-            { text: ALBARAN_PROMPT },
-          ],
-        },
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
+      // Intentar primero con gemini-2.5-flash y si falla probar gemini-3.7-flash
+      const modelsToTry = ['gemini-2.5-flash', 'gemini-3.7-flash'];
+      let lastError: any = null;
+      let rawResponseText = '';
 
-      // 25-second timeout limit to allow multimodal vision model full inference
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Tiempo límite de reconocimiento OCR superado (25s)')), 25000)
-      );
-
-      const response = await Promise.race([generatePromise, timeoutPromise]);
-
-      if (response.text) {
+      for (const modelName of modelsToTry) {
         try {
-          let cleanText = response.text.trim();
+          const generatePromise = ai.models.generateContent({
+            model: modelName,
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    data: base64Data,
+                    mimeType: detectedMimeType,
+                  },
+                },
+                { text: ALBARAN_PROMPT },
+              ],
+            },
+            config: {
+              responseMimeType: 'application/json',
+              temperature: 0.1,
+            },
+          });
+
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Timeout de OCR con ${modelName} (18s)`)), 18000)
+          );
+
+          const response = await Promise.race([generatePromise, timeoutPromise]);
+          if (response && response.text) {
+            rawResponseText = response.text;
+            break; // Exito con este modelo
+          }
+        } catch (mErr: any) {
+          console.warn(`Intento de OCR con ${modelName} no completado:`, mErr.message);
+          lastError = mErr;
+        }
+      }
+
+      if (rawResponseText) {
+        try {
+          let cleanText = rawResponseText.trim();
           if (cleanText.startsWith('```')) {
             cleanText = cleanText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
           }
-          // Also look for JSON object boundaries if surrounding text exists
           const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
             cleanText = jsonMatch[0];
@@ -115,10 +163,10 @@ async function startServer() {
           return res.json(parsed);
         } catch (pErr) {
           console.error('JSON parse error from Gemini:', pErr);
-          return res.json({ notes: response.text });
+          return res.json({ notes: rawResponseText });
         }
       } else {
-        return res.status(500).json({ error: 'Sin respuesta de Gemini Vision' });
+        return res.status(500).json({ error: lastError?.message || 'Sin respuesta de los modelos Gemini Vision' });
       }
     } catch (err: any) {
       console.error('Error in /api/scan-albaran:', err);
