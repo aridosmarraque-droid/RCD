@@ -135,96 +135,168 @@ async function startServer() {
         return res.status(400).json({ error: 'El campo "to" (destinatario) es obligatorio.' });
       }
 
-      const targetApiKey = apiKey || process.env.EMAIL_API_KEY || process.env.RESEND_API_KEY;
-      let targetWebhook = webhookUrl || process.env.EMAIL_WEBHOOK_URL || process.env.WEBHOOK_URL;
-      
-      // Auto-configure Resend endpoint if API Key is a Resend key
-      if (!targetWebhook && targetApiKey && targetApiKey.startsWith('re_')) {
-        targetWebhook = 'https://api.resend.com/emails';
-      }
+      const targetApiKey = (apiKey || process.env.EMAIL_API_KEY || process.env.RESEND_API_KEY || process.env.BREVO_API_KEY || process.env.SENDGRID_API_KEY || '').trim();
+      let targetWebhook = (webhookUrl || process.env.EMAIL_WEBHOOK_URL || process.env.WEBHOOK_URL || '').trim();
+      const fromAddress = (from || process.env.EMAIL_FROM_ADDRESS || 'administracion@marraque.es').trim();
 
-      const fromAddress = from || process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+      console.log('\n==================================================');
+      console.log(`📧 [Servidor /api/send-email] Petición de envío de correo`);
+      console.log(`• Destinatario: ${to}`);
+      console.log(`• Remitente:    ${fromAddress}`);
+      console.log(`• Asunto:       ${subject}`);
+      console.log(`• Webhook:      ${targetWebhook || '(No especificado)'}`);
+      console.log(`• API Key:      ${targetApiKey ? `${targetApiKey.slice(0, 6)}... (${targetApiKey.length} caracteres)` : '(No configurada)'}`);
 
-      console.log(`[Email Webhook] Intentando enviar correo a: ${to} | Asunto: ${subject}`);
+      // 1. Detectar Proveedor
+      let providerName = 'Desconocido';
+      let requestUrl = '';
+      let requestHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      let requestPayload: any = null;
 
-      if (targetWebhook) {
-        console.log(`[Email Webhook] Enviando petición a: ${targetWebhook}`);
+      const isResend = targetApiKey.startsWith('re_') || targetWebhook.includes('resend.com');
+      const isBrevo = targetApiKey.startsWith('xkeysib-') || targetWebhook.includes('brevo.com') || targetWebhook.includes('sendinblue.com');
+      const isSendGrid = targetApiKey.startsWith('SG.') || targetWebhook.includes('sendgrid.com');
+
+      if (isResend) {
+        providerName = 'Resend (resend.com)';
+        requestUrl = targetWebhook && targetWebhook.startsWith('http') ? targetWebhook : 'https://api.resend.com/emails';
+        requestHeaders['Authorization'] = `Bearer ${targetApiKey}`;
         
-        let payload: any;
-        // Si es la API oficial de Resend (resend.com)
-        if (targetWebhook.includes('resend.com') || (targetApiKey && targetApiKey.startsWith('re_'))) {
-          const effectiveFrom = fromAddress.includes('@') ? fromAddress : 'onboarding@resend.dev';
-          payload = {
-            from: effectiveFrom.includes('<') ? effectiveFrom : `Planta RCD <${effectiveFrom}>`,
-            to: Array.isArray(to) ? to : [to],
-            subject: subject || 'Notificación Planta RCD',
-            html: html || '',
-            text: text || '',
-          };
-        } else {
-          // Formato estándar para Zapier, Make, n8n, Supabase Edge Functions, Webhook propio
-          payload = {
-            to,
-            email: to,
-            recipient: to,
-            from: fromAddress,
-            subject: subject || 'Notificación Planta RCD',
-            html: html || '',
-            text: text || '',
-            message: text || '',
-            content: html || text || '',
-            timestamp: new Date().toISOString(),
-          };
-        }
-
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Planta-RCD-EcoMarraque/1.0',
+        // En Resend: si el remitente no es un dominio verificado o es una cuenta de prueba, se puede usar onboarding@resend.dev
+        const effectiveFrom = fromAddress.includes('@') ? fromAddress : 'onboarding@resend.dev';
+        requestPayload = {
+          from: effectiveFrom.includes('<') ? effectiveFrom : `Áridos Marraque <${effectiveFrom}>`,
+          to: Array.isArray(to) ? to : [to],
+          subject: subject || 'Notificación Planta RCD',
+          html: html || '',
+          text: text || '',
         };
-
+      } else if (isBrevo) {
+        providerName = 'Brevo / Sendinblue (api.brevo.com)';
+        requestUrl = targetWebhook && targetWebhook.startsWith('http') ? targetWebhook : 'https://api.brevo.com/v3/smtp/email';
+        requestHeaders['api-key'] = targetApiKey;
+        requestPayload = {
+          sender: {
+            name: 'Áridos Marraque - Planta RCD',
+            email: fromAddress,
+          },
+          to: [
+            {
+              email: to,
+              name: to.split('@')[0],
+            },
+          ],
+          subject: subject || 'Notificación Planta RCD',
+          htmlContent: html || `<pre>${text}</pre>`,
+          textContent: text || '',
+        };
+      } else if (isSendGrid) {
+        providerName = 'SendGrid (api.sendgrid.com)';
+        requestUrl = targetWebhook && targetWebhook.startsWith('http') ? targetWebhook : 'https://api.sendgrid.com/v3/mail/send';
+        requestHeaders['Authorization'] = `Bearer ${targetApiKey}`;
+        requestPayload = {
+          personalizations: [{ to: [{ email: to }] }],
+          from: { email: fromAddress, name: 'Áridos Marraque - Planta RCD' },
+          subject: subject || 'Notificación Planta RCD',
+          content: [
+            {
+              type: 'text/html',
+              value: html || text || 'Notificación Planta RCD',
+            },
+          ],
+        };
+      } else if (targetWebhook && targetWebhook.startsWith('http')) {
+        providerName = 'Webhook Personalizado / Make / Zapier / n8n / Apps Script';
+        requestUrl = targetWebhook;
         if (targetApiKey) {
-          headers['Authorization'] = `Bearer ${targetApiKey}`;
-          headers['api-key'] = targetApiKey;
+          requestHeaders['Authorization'] = `Bearer ${targetApiKey}`;
+          requestHeaders['api-key'] = targetApiKey;
+          requestHeaders['x-api-key'] = targetApiKey;
         }
-
-        const webhookResponse = await fetch(targetWebhook, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload),
-        });
-
-        const responseText = await webhookResponse.text();
-        console.log(`[Email Webhook] Respuesta webhook status: ${webhookResponse.status} ${webhookResponse.statusText}`);
-
-        if (webhookResponse.ok) {
-          return res.json({
-            success: true,
-            status: webhookResponse.status,
-            message: 'Correo enviado con éxito.',
-            responseBody: responseText,
-          });
-        } else {
-          console.warn(`[Email Webhook] Advertencia del webhook (${webhookResponse.status}):`, responseText);
-          return res.status(webhookResponse.status || 500).json({
-            success: false,
-            status: webhookResponse.status,
-            error: `El servidor de correo/Webhook devolvió error ${webhookResponse.status}: ${responseText}`,
-          });
-        }
+        requestPayload = {
+          to,
+          email: to,
+          recipient: to,
+          from: fromAddress,
+          subject: subject || 'Notificación Planta RCD',
+          html: html || '',
+          text: text || '',
+          message: text || '',
+          content: html || text || '',
+          timestamp: new Date().toISOString(),
+        };
       }
 
-      // Si no hay webhook configurado en el backend
-      console.log(`[Email Webhook] Aviso: No hay Webhook configurado. Notificación simulada para ${to}`);
-      return res.json({
-        success: true,
-        mock: true,
-        message: `Correo simulado correctamente para ${to}. Configure un Webhook o API Key en la pantalla de Configuración para entrega real.`,
+      // Si NO hay ningún proveedor o webhook configurado
+      if (!requestUrl) {
+        console.warn('⚠️ [Servidor /api/send-email] No hay API Key ni Webhook configurado.');
+        console.log('==================================================\n');
+        return res.status(400).json({
+          success: false,
+          isConfigured: false,
+          error: 'No hay ningún servicio de correo configurado. Por favor, introduzca una Clave API (Resend "re_...", Brevo "xkeysib-...", SendGrid "SG....") o una URL de Webhook en la pestaña "Correo" de Ajustes.',
+          diagnostic: {
+            to,
+            from: fromAddress,
+            hasWebhook: Boolean(targetWebhook),
+            hasApiKey: Boolean(targetApiKey),
+          },
+        });
+      }
+
+      console.log(`• Proveedor detectado: ${providerName}`);
+      console.log(`• URL Endpoint:       ${requestUrl}`);
+
+      // Enviar la petición HTTP al proveedor externo
+      const fetchResponse = await fetch(requestUrl, {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify(requestPayload),
       });
+
+      const responseText = await fetchResponse.text();
+      console.log(`• Código de respuesta HTTP: ${fetchResponse.status} ${fetchResponse.statusText}`);
+      console.log(`• Respuesta del proveedor:  ${responseText.slice(0, 500)}`);
+      console.log('==================================================\n');
+
+      let parsedResponseBody: any = null;
+      try {
+        parsedResponseBody = JSON.parse(responseText);
+      } catch {
+        parsedResponseBody = responseText;
+      }
+
+      if (fetchResponse.ok) {
+        return res.json({
+          success: true,
+          provider: providerName,
+          status: fetchResponse.status,
+          message: `Correo enviado exitosamente a través de ${providerName}.`,
+          responseBody: parsedResponseBody,
+        });
+      } else {
+        let helpfulTip = '';
+        if (isResend && (responseText.includes('domain') || responseText.includes('verified') || fetchResponse.status === 403)) {
+          helpfulTip = ' [Aviso Resend: Si aún no ha verificado el dominio marraque.es en resend.com, el remitente debe ser onboarding@resend.dev y el destinatario debe ser el email registrado en su cuenta de Resend].';
+        } else if (isBrevo && (fetchResponse.status === 401 || fetchResponse.status === 403)) {
+          helpfulTip = ' [Aviso Brevo: Compruebe que la API Key (xkeysib-...) es válida y que el email remitente está autorizado en su panel de Brevo].';
+        }
+
+        return res.status(fetchResponse.status || 500).json({
+          success: false,
+          provider: providerName,
+          status: fetchResponse.status,
+          error: `Error de ${providerName} (${fetchResponse.status}): ${responseText}${helpfulTip}`,
+          rawResponse: parsedResponseBody,
+        });
+      }
     } catch (err: any) {
-      console.error('[Email Webhook] Error enviando correo:', err);
+      console.error('❌ [Servidor /api/send-email] Error fatal de conexión:', err);
       return res.status(500).json({
         success: false,
-        error: err.message || 'Error inesperado en el servidor al enviar correo.',
+        error: `Error de conexión al enviar correo: ${err.message || 'Error de red en el servidor'}`,
       });
     }
   });
