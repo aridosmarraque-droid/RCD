@@ -157,17 +157,38 @@ export class RCDService {
     return updated;
   }
 
-  static isClientRegistered(clientName: string, clientCode?: string): boolean {
-    if (!clientName) return false;
-    let cleanName = clientName.trim().replace(/^\[[A-Z0-9\-]+\]\s*/i, '').replace(/^[\-:\.]\s*/, '').trim();
-    let cleanCode = (clientCode || '').trim().replace(/^\[|\]$/g, '');
+  static isClientRegistered(clientName: string, clientCode?: string, clientCif?: string): boolean {
+    return this.findMatchingClient(clientName, clientCode, clientCif) !== null;
+  }
 
+  static findMatchingClient(clientName?: string, clientCode?: string, clientCif?: string): Client | null {
     const clients = this.getClients();
-    return clients.some(
-      (c) =>
-        (cleanCode && c.code.toLowerCase() === cleanCode.toLowerCase()) ||
-        (cleanName && c.name.toLowerCase() === cleanName.toLowerCase())
-    );
+    let cleanName = (clientName || '').trim().replace(/^\[[A-Z0-9\-]+\]\s*/i, '').replace(/^[\-:\.]\s*/, '').toLowerCase();
+    let cleanCode = (clientCode || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+    let cleanCif = (clientCif || '').trim().toUpperCase().replace(/^ES/, '');
+
+    // 1. Match by exact CIF
+    if (cleanCif) {
+      const matchCif = clients.find((c) => c.cif && c.cif.toUpperCase().replace(/^ES/, '').replace(/[^A-Z0-9]/g, '') === cleanCif.replace(/[^A-Z0-9]/g, ''));
+      if (matchCif) return matchCif;
+    }
+
+    // 2. Match by exact Code (ej: C0096, C0048)
+    if (cleanCode) {
+      const matchCode = clients.find((c) => c.code.toLowerCase() === cleanCode || c.code.toLowerCase().replace(/[^a-z0-9]/g, '') === cleanCode.replace(/[^a-z0-9]/g, ''));
+      if (matchCode) return matchCode;
+    }
+
+    // 3. Match by Name
+    if (cleanName && cleanName.length >= 3) {
+      const matchName = clients.find((c) => {
+        const n = c.name.toLowerCase();
+        return n === cleanName || n.includes(cleanName) || cleanName.includes(n);
+      });
+      if (matchName) return matchName;
+    }
+
+    return null;
   }
 
   static async upsertClientFromScan(clientCode: string, clientName: string): Promise<Client> {
