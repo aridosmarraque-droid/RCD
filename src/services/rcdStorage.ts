@@ -340,52 +340,85 @@ export class RCDService {
       }
     }
 
-    // 2. Run WhatsApp/Email notifications for albarán entry in a non-blocking background task
+    // 2. Ejecutar notificaciones de WhatsApp y Correo para la entrada del albarán
     (async () => {
       let mobileSent = false;
       let emailSent = false;
 
-      // WhatsApp notification via Ultramsg if client has mobile notification enabled
-      if (client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
-        try {
-          const messageText = `🏭 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha registrado en planta un nuevo albarán de entrega:\n📜 *Nº Albarán:* ${created.numAlbaran}\n📦 *Residuo:* ${created.wasteTypeName} (${created.wasteTypeCode})\n⚖️ *Peso Neto:* ${created.quantityTons} toneladas\n🚚 *Matrícula:* ${created.licensePlate}\n📍 *Zona:* ${created.plantZone}\n📅 *Fecha/Hora:* ${created.date} ${created.time}\n\nGracias por su compromiso con la gestión sostenible de RCD.`;
+      // Diagnóstico en consola para avisos automáticos
+      console.group(`🔔 [Notificaciones de Entrada RCD] Albarán Nº ${created.numAlbaran}`);
+      console.log('• Cliente:', client.name);
+      console.log('• Configuración Cliente Móvil:', { notifyMobile: client.notifyMobile, mobile: client.mobile });
+      console.log('• Configuración Cliente Email:', { notifyEmail: client.notifyEmail, email: client.email });
 
-          const sendResult = await Promise.race([
-            UltramsgService.sendWhatsApp(client.mobile, messageText),
-            new Promise<{ success: boolean; error: string }>((resolve) =>
-              setTimeout(() => resolve({ success: false, error: 'Timeout de red Ultramsg' }), 6000)
-            ),
-          ]);
-          if (sendResult.success) {
-            mobileSent = true;
+      // WhatsApp notification via Ultramsg if client has mobile notification enabled
+      if (client.notifyMobile && client.mobile) {
+        if (UltramsgService.isConfigured()) {
+          try {
+            const messageText = `🏭 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha registrado en planta un nuevo albarán de entrega:\n📜 *Nº Albarán:* ${created.numAlbaran}\n📦 *Residuo:* ${created.wasteTypeName} (${created.wasteTypeCode})\n⚖️ *Peso Neto:* ${created.quantityTons} toneladas\n🚚 *Matrícula:* ${created.licensePlate}\n📍 *Zona:* ${created.plantZone}\n📅 *Fecha/Hora:* ${created.date} ${created.time}\n\nGracias por su compromiso con la gestión sostenible de RCD.`;
+
+            const sendResult = await Promise.race([
+              UltramsgService.sendWhatsApp(client.mobile, messageText),
+              new Promise<{ success: boolean; error: string }>((resolve) =>
+                setTimeout(() => resolve({ success: false, error: 'Timeout de red Ultramsg' }), 6000)
+              ),
+            ]);
+            if (sendResult.success) {
+              mobileSent = true;
+              console.log('✅ WhatsApp enviado con éxito al cliente:', client.mobile);
+            } else {
+              console.warn('⚠️ No se pudo entregar WhatsApp:', sendResult.error);
+            }
+          } catch (e) {
+            console.warn('⚠️ Error al enviar WhatsApp:', e);
           }
-        } catch (e) {
-          console.warn('Notice sending WhatsApp:', e);
+        } else {
+          console.info('ℹ️ Cliente tiene WhatsApp activado, pero Ultramsg no está configurado en Ajustes.');
         }
       }
 
       // Email notification via EmailService if client has notifyEmail enabled and an email address
-      if (client.notifyEmail && client.email && EmailService.isConfigured()) {
-        try {
-          const emailResult = await Promise.race([
-            EmailService.sendAlbaranEmail(client.email, client.name, created),
-            new Promise<{ success: boolean; error: string }>((resolve) =>
-              setTimeout(() => resolve({ success: false, error: 'Timeout de red Email' }), 6000)
-            ),
-          ]);
-          if (emailResult.success) {
-            emailSent = true;
+      if (client.notifyEmail && client.email) {
+        if (EmailService.isConfigured()) {
+          try {
+            const emailResult = await Promise.race([
+              EmailService.sendAlbaranEmail(client.email, client.name, created),
+              new Promise<{ success: boolean; error?: string }>((resolve) =>
+                setTimeout(() => resolve({ success: false, error: 'Timeout de red Email (6s)' }), 6000)
+              ),
+            ]);
+            if (emailResult.success) {
+              emailSent = true;
+              console.log('✅ Correo de albarán entregado con éxito a:', client.email);
+            } else {
+              console.warn('⚠️ Fallo en el envío de correo de albarán:', emailResult.error);
+            }
+          } catch (e) {
+            console.warn('⚠️ Error enviando correo de albarán:', e);
           }
-        } catch (e) {
-          console.warn('Notice sending Email:', e);
+        } else {
+          console.info('ℹ️ Cliente tiene Email activado, pero el servicio de correo no está configurado en Ajustes.');
         }
       }
+
+      console.groupEnd();
 
       created.notificationsSent = {
         mobileSent,
         emailSent,
         timestamp: new Date().toISOString(),
       };
+
+      // Actualizar el estado de la notificación en el almacenamiento local y remoto
+      const currentAlbs = this.getAlbaranes();
+      const idx = currentAlbs.findIndex((a) => a.id === created.id);
+      if (idx !== -1) {
+        currentAlbs[idx].notificationsSent = created.notificationsSent;
+        this.saveAlbaranesLocal(currentAlbs);
+        if (SupabaseService.isConfigured()) {
+          SupabaseService.insertAlbaran(currentAlbs[idx]).catch(() => {});
+        }
+      }
     })();
 
     return created;
