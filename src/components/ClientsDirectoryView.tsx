@@ -12,8 +12,13 @@ export const ClientsDirectoryView: React.FC<ClientsDirectoryViewProps> = ({ clie
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [savedSuccessId, setSavedSuccessId] = useState<string | null>(null);
+  const [errorId, setErrorId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Form edit states
+  const [editName, setEditName] = useState('');
+  const [editCode, setEditCode] = useState('');
+  const [editCif, setEditCif] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editMobile, setEditMobile] = useState('');
   const [editNotifyEmail, setEditNotifyEmail] = useState(true);
@@ -21,27 +26,47 @@ export const ClientsDirectoryView: React.FC<ClientsDirectoryViewProps> = ({ clie
 
   const startEdit = (client: Client) => {
     setEditingId(client.id);
+    setEditName(client.name || '');
+    setEditCode(client.code || '');
+    setEditCif(client.cif || '');
     setEditEmail(client.email || '');
     setEditMobile(client.mobile || '');
     setEditNotifyEmail(client.notifyEmail);
     setEditNotifyMobile(client.notifyMobile);
+    setErrorId(null);
   };
 
   const handleSave = async (client: Client) => {
-    await RCDService.updateClientNotificationSettings(
-      client.id,
-      editNotifyEmail,
-      editNotifyMobile,
-      editEmail,
-      editMobile
-    );
-    setEditingId(null);
-    setSavedSuccessId(client.id);
-    onClientsUpdated();
+    if (!editName.trim()) {
+      setErrorId(client.id);
+      setErrorMessage('El nombre / razón social del cliente no puede estar vacío.');
+      return;
+    }
 
-    setTimeout(() => {
-      setSavedSuccessId(null);
-    }, 3000);
+    try {
+      await RCDService.updateClientNotificationSettings(
+        client.id,
+        editNotifyEmail,
+        editNotifyMobile,
+        editEmail.trim(),
+        editMobile.trim(),
+        editName.trim(),
+        editCode.trim(),
+        editCif.trim()
+      );
+      setEditingId(null);
+      setSavedSuccessId(client.id);
+      setErrorId(null);
+      onClientsUpdated();
+
+      setTimeout(() => {
+        setSavedSuccessId(null);
+      }, 3000);
+    } catch (err: any) {
+      console.error('Error saving client:', err);
+      setErrorId(client.id);
+      setErrorMessage(err.message || 'Error al guardar los datos del cliente.');
+    }
   };
 
   const filteredClients = clients.filter(
@@ -124,6 +149,55 @@ export const ClientsDirectoryView: React.FC<ClientsDirectoryViewProps> = ({ clie
               {/* Card Body: Editing mode vs Viewing mode */}
               {isEditing ? (
                 <div className="space-y-4 pt-1">
+                  {errorId === client.id && (
+                    <div className="bg-rose-950/60 border border-rose-500/50 rounded-xl p-2.5 text-xs text-rose-200">
+                      {errorMessage}
+                    </div>
+                  )}
+
+                  {/* Client Name Input */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center space-x-1">
+                      <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Razón Social / Nombre del Cliente *</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="ej. CONSTRUCCIONES MARRAQUE S.L."
+                      className="w-full bg-slate-950 text-white font-bold text-xs sm:text-sm border border-slate-800 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Code & CIF Grid */}
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                        Código SAP (ej: C0096)
+                      </label>
+                      <input
+                        type="text"
+                        value={editCode}
+                        onChange={(e) => setEditCode(e.target.value)}
+                        placeholder="C0096"
+                        className="w-full bg-slate-950 text-slate-200 font-mono text-xs border border-slate-800 rounded-xl px-3 py-2 focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                        NIF / CIF
+                      </label>
+                      <input
+                        type="text"
+                        value={editCif}
+                        onChange={(e) => setEditCif(e.target.value.toUpperCase())}
+                        placeholder="B12345678"
+                        className="w-full bg-slate-950 text-slate-200 font-mono text-xs border border-slate-800 rounded-xl px-3 py-2 focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
                   {/* Email Input */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center space-x-1">
