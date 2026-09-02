@@ -305,6 +305,22 @@ export class SupabaseService {
     }
   }
 
+  static async upsertAlbaran(alb: Albaran): Promise<void> {
+    const supabase = this.getClient();
+    if (!supabase) return;
+
+    try {
+      const row = this.mapAlbaranToDB(alb);
+      const { error } = await supabase.from('rcd_albaranes').upsert(row, { onConflict: 'rcd_id' });
+
+      if (error) {
+        console.warn('Notice upserting rcd_albaranes into Supabase:', error.message || error);
+      }
+    } catch (err) {
+      console.warn('Notice upserting rcd_albaranes into Supabase:', err);
+    }
+  }
+
   static async deleteAlbaran(id: string): Promise<void> {
     const supabase = this.getClient();
     if (!supabase) return;
@@ -572,5 +588,4 @@ export class SupabaseService {
     }
   }
 }
-
 
