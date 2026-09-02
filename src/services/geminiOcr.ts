@@ -1,37 +1,70 @@
 import { GoogleGenAI } from '@google/genai';
 import { OCRScanResult } from '../types/rcd';
 
-const ALBARAN_PROMPT = `Actúa como un sistema experto de visión artificial y OCR de alta precisión especializado en albaranes de pesaje en báscula, tickets de entrega y documentos de plantas de reciclaje RCD y canteras de áridos (SAP, Áridos Marraque, Holcim, Heidelberg, Cemex, etc.).
+const ALBARAN_PROMPT = `Actúa como un sistema experto de OCR y visión artificial de máxima precisión especializado en los albaranes de entrega y pesaje de la empresa "ÁRIDOS MARRAQUE S.L." (y plantas de valorización de RCD / canteras de áridos).
 
-Examina minuciosamente toda la foto del albarán o ticket (encabezado, campos de cliente, tabla de pesajes bruto/tara/neto, códigos LER, matrícula, número de albarán, fecha y hora).
+Todos los albaranes siguen una estructura visual estándar idéntica dividida en las siguientes zonas:
 
-Extrae ÚNICAMENTE la información REAL visible en la imagen. NO inventes ningún dato. Si un dato no figura o no es legible, déjalo como string vacío ("") o 0 para números.
+1. ENCABEZADO SUPERIOR:
+   - "ARIDOS MARRAQUE S.L." (B04117818, Avda. Federico Garcia Lorca s/n 04260 Rioja).
+   - Puede figurar la palabra "Original" en la esquina superior derecha.
 
-Devuelve la información en formato JSON estricto con los siguientes campos:
+2. BLOQUE SUPERIOR IZQUIERDO (Bajo el título "Albaran de Entrega"):
+   - "Fecha : DD/MM/YY" o "DD/MM/YYYY" (ejemplo: "Fecha : 02/09/26" significa 02 de Septiembre de 2026 -> convertir a formato ISO "2026-09-02").
+   - "Nº Albaran : XXXXXXX" -> Número de 7 dígitos (ej: "2607873", "2607584").
+   - "Cód. Cliente : CXXXX" -> Letra C seguida de 4 dígitos (ej: "C0096", "C0048", "C0012", "C0100").
+
+3. BLOQUE SUPERIOR DERECHO (Datos del Cliente / Empresa):
+   - Primera línea en negrita: Razón social del Cliente (ej: "MATERIALES DE CONSTRUCCION NEGI", "ANGEL ARTES SANCHEZ S.L.").
+   - Líneas intermedias: Dirección de la empresa (ej: "C/RAMON Y CAJAL, Nº6 \n 04250 PECHINA \n ALMERIA").
+   - Última línea: "ID fiscal : ESBXXXXXXXX" o "BXXXXXXXX" (ej: "ESB04435194", "B04221487").
+
+4. TABLA CENTRAL DE MATERIAL / PESAJE:
+   - Cabeceras de columnas: | Núm | Descripción | Bruto | Tara | Cantidad |
+   - Fila de datos del residuo:
+     • "Núm": Código interno (ej: "GRVA2", "HORM1", "ESCO1", "RCD01").
+     • "Descripción": Nombre del residuo con su código LER entre paréntesis.
+       Ejemplo: "TN DE ESCOMBRO SUCIO (LER 17 09 04)" o "TN DE HORMIGON (LER 17 01 01)" o "TIERRAS Y PIEDRAS (LER 17 05 04)".
+       -> Extrae el Código LER exacto de dentro del paréntesis: "17 09 04", "17 01 01", "17 01 02", "17 01 07", "17 05 04", "17 02 01", etc.
+       -> Extrae la denominación limpia: "TN DE ESCOMBRO SUCIO" (o el texto que figure antes de LER).
+     • "Bruto": Peso bruto en toneladas (ej: 37,62).
+     • "Tara": Peso tara del camión en toneladas (ej: 13,6).
+     • "Cantidad": PESO NETO / TONELADAS NETAS (ej: "24,02" -> 24.02). En estos albaranes la columna "Cantidad" es SIEMPRE el peso neto en toneladas.
+
+5. BLOQUE "Datos Transporte" (Debajo de la tabla):
+   - "Matricula : XXXX-XXX / RXXXX-XXX" (ej: "1885HGF/R0549BDR", "1885HGF", "9523HTN"). Puede ser tractora y remolque separados por barra.
+   - "Transportista : [CIF] [NOMBRE EMPRESA O CONDUCTOR]" (ej: "B04221487 ANGEL ARTES SANCHEZ S.L.").
+   - "Tara camion : 13,600 TONELADAS".
+
+6. BLOQUE "Datos Destino":
+   - Población u obra (ej: "PECHINA", "ALMERIA", "RIOJA").
+
+Extrae la información con absoluta fidelidad y devuélvela ÚNICAMENTE en este formato JSON estricto:
 {
-  "numAlbaran": "Número o código del albarán/ticket visible (ej: 2607584, ALB-2026-08493, 2026/0129). Busca 'Nº Albarán', 'Albarán:', 'Nº Ticket', 'Ticket:', 'Nº:', 'Doc:', etc.",
-  "clientCode": "Código de cliente SAP si aparece en el documento (ej: C0048, C0086, C-00100, 4801)",
-  "clientName": "Razón social del cliente LIMPIA, sin incluir el código de cliente SAP entre corchetes o paréntesis (ej: 'ANGEL ARTES SANCHEZ S.L.' en lugar de '[C0048] ANGEL ARTES SANCHEZ S.L.')",
-  "wasteTypeCode": "Código LER del residuo (ej: 17 01 01, 17 01 02, 17 01 07, 17 05 04, 17 09 04, 17 02 01, 17 03 02). Si figura sin espacios como 170101, sepáralo como '17 01 01'",
-  "wasteTypeName": "Denominación o descripción del residuo o material impresa en el papel (ej: TN DE HORMIGON, Hormigón Limpio, RCD Mezcla, Tierras y piedras)",
-  "quantityTons": Número decimal exacto con las Toneladas Netas (ej: 19.84). IMPORTANTE: Si el peso neto aparece en kilogramos (ej: '19.840 kg', '24560 KG'), DIVÍDELO entre 1000 para obtener toneladas (19.84, 24.56). Si no hay peso, usa 0,
-  "licensePlate": "Matrícula del vehículo/camión si figura en la imagen (ej: 9523HTN, 8492-KZX, 9523HTN/R3043BCG)",
-  "date": "Fecha en formato YYYY-MM-DD si figura (ej: 2026-08-10, convertir 10/08/2026 -> 2026-08-10)",
-  "time": "Hora en formato HH:MM si figura (ej: 10:35)",
-  "notes": "Cualquier texto adicional o nota relevante presente en el documento"
+  "numAlbaran": "Número de 7 dígitos del albarán (ej: 2607873)",
+  "clientCode": "Código de cliente (ej: C0096)",
+  "clientName": "Razón social del cliente (ej: MATERIALES DE CONSTRUCCION NEGI)",
+  "clientCif": "ID fiscal / NIF / CIF del cliente si figura (ej: ESB04435194)",
+  "wasteTypeCode": "Código LER con espacios (ej: 17 09 04, 17 01 01, 17 01 07, 17 05 04)",
+  "wasteTypeName": "Nombre o descripción del residuo impreso (ej: TN DE ESCOMBRO SUCIO)",
+  "quantityTons": 24.02,
+  "licensePlate": "Matrícula completa del vehículo (ej: 1885HGF/R0549BDR)",
+  "date": "2026-09-02",
+  "time": "HH:MM si figura, o string vacío",
+  "notes": "Transportista o destino si figura (ej: Destino: PECHINA | Transportista: ANGEL ARTES SANCHEZ S.L.)"
 }`;
 
 /**
- * Cleans extracted client data by separating SAP code like [C0048] from client name.
+ * Cleans and standardizes extracted client data, weights, dates, and LER codes.
  */
-export function cleanExtractedOCRData(raw: Partial<OCRScanResult>): Partial<OCRScanResult> {
-  if (!raw) return raw;
-  const result = { ...raw };
+export function cleanExtractedOCRData(raw: any): Partial<OCRScanResult> {
+  if (!raw) return {};
+  const result: any = { ...raw };
 
+  // 1. Limpiar y separar código SAP de cliente y nombre
   let name = (result.clientName || '').trim();
   let code = (result.clientCode || '').trim();
 
-  // Pattern matching leading brackets like "[C0048] ANGEL ARTES SANCHEZ S.L." or "C0048 ANGEL ARTES..." or "(C0048) ..."
   const match = name.match(/^(?:\[([A-Z0-9\-]{3,10})\]|\(([A-Z0-9\-]{3,10})\)|([A-Z][0-9]{3,6})\s*[\-:]?)\s*(.*)/i);
   if (match) {
     const extractedCode = (match[1] || match[2] || match[3] || '').trim();
@@ -45,14 +78,82 @@ export function cleanExtractedOCRData(raw: Partial<OCRScanResult>): Partial<OCRS
     }
   }
 
-  // Remove any remaining leading/trailing brackets or dashes
   name = name.replace(/^\[[A-Z0-9\-]+\]\s*/i, '').replace(/^[\-:\.]\s*/, '').trim();
   if (code) {
-    code = code.replace(/^\[|\]$/g, '').trim();
+    code = code.replace(/^\[|\]$/g, '').trim().toUpperCase();
   }
 
   result.clientName = name;
   result.clientCode = code;
+
+  // 2. Limpieza de peso en Toneladas (quantityTons)
+  let rawQty = result.quantityTons;
+  if (typeof rawQty === 'string') {
+    // Reemplazar comas decimales europeas: "24,02" -> 24.02
+    const cleanStr = (rawQty as string).replace(/\s/g, '').replace(',', '.').replace(/[^0-9.]/g, '');
+    rawQty = parseFloat(cleanStr);
+  }
+  let qtyNum = Number(rawQty);
+  if (isNaN(qtyNum) || qtyNum <= 0) {
+    // Si no viene cantidad pero viene bruto y tara, calcular: Bruto - Tara
+    const bruto = parseFloat(String(result.bruto || result.gross || '').replace(',', '.'));
+    const tara = parseFloat(String(result.tara || result.tare || '').replace(',', '.'));
+    if (!isNaN(bruto) && !isNaN(tara) && bruto > tara) {
+      qtyNum = parseFloat((bruto - tara).toFixed(2));
+    } else {
+      qtyNum = 0;
+    }
+  }
+  // Si vino en kilogramos (> 200), convertir a toneladas
+  if (qtyNum > 200) {
+    qtyNum = parseFloat((qtyNum / 1000).toFixed(2));
+  }
+  result.quantityTons = parseFloat(qtyNum.toFixed(2));
+
+  // 3. Extracción de Código LER si estaba dentro del nombre de residuo
+  let wasteCode = (result.wasteTypeCode || '').trim();
+  let wasteName = (result.wasteTypeName || '').trim();
+
+  const lerRegex = /(?:LER\s*)?([0-9]{2}\s*[0-9]{2}\s*[0-9]{2})/i;
+  const lerMatch = (wasteCode + ' ' + wasteName).match(lerRegex);
+  if (lerMatch) {
+    const rawLerDigits = lerMatch[1].replace(/\s+/g, '');
+    if (rawLerDigits.length === 6) {
+      wasteCode = `${rawLerDigits.slice(0, 2)} ${rawLerDigits.slice(2, 4)} ${rawLerDigits.slice(4, 6)}`;
+    }
+  }
+
+  // Si wasteTypeCode es 170904 -> 17 09 04
+  if (wasteCode.replace(/\s/g, '').length === 6 && !wasteCode.includes(' ')) {
+    const d = wasteCode.replace(/\s/g, '');
+    wasteCode = `${d.slice(0, 2)} ${d.slice(2, 4)} ${d.slice(4, 6)}`;
+  }
+
+  result.wasteTypeCode = wasteCode;
+  result.wasteTypeName = wasteName.replace(/\(LER\s*[0-9\s]+\)/gi, '').trim();
+
+  // 4. Normalizar Fecha (ej: 02/09/26 o 02/09/2026 -> 2026-09-02)
+  if (result.date) {
+    let dateStr = String(result.date).trim();
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split('/');
+      if (parts.length === 3) {
+        const day = parts[0].padStart(2, '0');
+        const month = parts[1].padStart(2, '0');
+        let year = parts[2];
+        if (year.length === 2) {
+          year = parseInt(year, 10) > 50 ? `19${year}` : `20${year}`;
+        }
+        dateStr = `${year}-${month}-${day}`;
+      }
+    }
+    result.date = dateStr;
+  }
+
+  // 5. Matrícula en mayúsculas sin espacios innecesarios
+  if (result.licensePlate) {
+    result.licensePlate = String(result.licensePlate).toUpperCase().replace(/\s*[\/\-]\s*/g, '/').trim();
+  }
 
   return result;
 }
