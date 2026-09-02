@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Database, MessageSquare, Check, Copy, AlertTriangle, Save, Send, Sparkles, Server, Mail, RefreshCw } from 'lucide-react';
+import { X, Database, MessageSquare, Check, Copy, AlertTriangle, Save, Send, Sparkles, Server, Mail, RefreshCw, Terminal, Info, HelpCircle } from 'lucide-react';
 import { SupabaseService } from '../services/supabaseClient';
 import { UltramsgService } from '../services/ultramsgService';
 import { EmailService } from '../services/emailService';
@@ -36,6 +36,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [emailSaved, setEmailSaved] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState('');
   const [testEmailStatus, setTestEmailStatus] = useState<{ loading: boolean; message?: string; success?: boolean }>({ loading: false });
+  const [diagMessage, setDiagMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -52,6 +53,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       setEmailApiKey(emailConfig.apiKey);
       setEmailFromAddress(emailConfig.fromAddress);
       setEmailSignerAddress(emailConfig.signerAddress);
+
+      // Imprimir diagnóstico del servicio en la consola
+      EmailService.printDiagnosticToConsole();
     }
   }, [isOpen]);
 
@@ -84,6 +88,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     EmailService.saveConfig(emailWebhookUrl, emailApiKey, emailFromAddress, emailSignerAddress);
     setEmailSaved(true);
     setTimeout(() => setEmailSaved(false), 3000);
+    EmailService.printDiagnosticToConsole();
+  };
+
+  const handleTriggerConsoleDiag = () => {
+    EmailService.printDiagnosticToConsole();
+    const config = EmailService.getConfig();
+    setDiagMessage(`Diagnóstico impreso en la consola F12. Remitente: ${config.fromAddress || 'Sin definir'}, Clave API: ${config.apiKey ? 'Configurada' : 'Vacía'}, Webhook: ${config.webhookUrl ? 'Configurado' : 'Vacío'}`);
+    setTimeout(() => setDiagMessage(null), 8000);
+  };
+
+  const handleApplyPreset = (preset: 'brevo' | 'resend' | 'sendgrid' | 'webhook') => {
+    if (preset === 'brevo') {
+      setEmailWebhookUrl('');
+      if (!emailFromAddress) setEmailFromAddress('administracion@marraque.es');
+    } else if (preset === 'resend') {
+      setEmailWebhookUrl('https://api.resend.com/emails');
+      if (!emailFromAddress) setEmailFromAddress('onboarding@resend.dev');
+    } else if (preset === 'sendgrid') {
+      setEmailWebhookUrl('');
+      if (!emailFromAddress) setEmailFromAddress('administracion@marraque.es');
+    } else if (preset === 'webhook') {
+      setEmailWebhookUrl('https://hook.eu1.make.com/tu-webhook-o-zapier');
+    }
   };
 
   const handleSendTestWhatsApp = async () => {
@@ -102,12 +129,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
 
   const handleSendTestEmail = async () => {
     if (!testEmailAddress) return;
-    setTestEmailStatus({ loading: true, message: 'Enviando petición a través del servidor...' });
+    setTestEmailStatus({ loading: true, message: 'Enviando petición a través del servidor (/api/send-email)...' });
     const res = await EmailService.sendEmail({
       to: testEmailAddress,
       subject: '🧪 [Planta RCD] Prueba de Notificación por Correo Electrónico',
       textBody: 'Prueba de integración con el servicio de Correo Electrónico / Webhook RCD completada con éxito.',
-      htmlBody: '<h3>🧪 Planta de Residuos RCD</h3><p>Prueba de integración con el servicio de Correo Electrónico / Webhook RCD completada con éxito. ¡Las notificaciones automáticas de albaranes y certificados están listas!</p>',
+      htmlBody: '<h3>🧪 Áridos Marraque - Planta RCD</h3><p>Prueba de integración con el servicio de Correo Electrónico / Webhook RCD completada con éxito. ¡Las notificaciones automáticas de albaranes y certificados están operativas!</p>',
     });
     if (res.success) {
       setTestEmailStatus({ loading: false, success: true, message: res.message || `¡Notificación de correo enviada con éxito a ${testEmailAddress}!` });
@@ -549,13 +576,80 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
                 <p>
                   Cada vez que un operario registra una entrada de vehículo en planta, el sistema envía una notificación automática por correo electrónico al cliente (si la opción de Email está activada en su ficha de cliente y tiene registrado su correo).
                 </p>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[11px] text-slate-400">
+                    💡 Los avisos se procesan mediante el servidor backend (<code className="text-emerald-300">/api/send-email</code>) para evitar bloqueos CORS.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleTriggerConsoleDiag}
+                    className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded text-[11px] font-mono transition"
+                    title="Abre la consola de desarrollo (F12) para ver el informe detallado"
+                  >
+                    <Terminal className="w-3.5 h-3.5" />
+                    <span>Ver Diagnóstico en Consola (F12)</span>
+                  </button>
+                </div>
+                {diagMessage && (
+                  <p className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/20 p-2 rounded">
+                    {diagMessage}
+                  </p>
+                )}
+              </div>
+
+              {/* Quick Presets Selector */}
+              <div className="bg-slate-950 p-3 border border-slate-800 rounded-xl space-y-2">
+                <span className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Configuración Rápida por Proveedor (Opciones gratuitas y webhook):</span>
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset('brevo')}
+                    className="bg-slate-900 hover:bg-slate-800 text-left p-2 rounded-lg border border-slate-700 hover:border-emerald-500/50 transition group"
+                  >
+                    <div className="font-bold text-white group-hover:text-emerald-400 flex items-center justify-between">
+                      <span>Brevo (Sendinblue)</span>
+                      <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1 rounded">Gratis</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">300 emails/día gratis. Clave (xkeysib-...)</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset('resend')}
+                    className="bg-slate-900 hover:bg-slate-800 text-left p-2 rounded-lg border border-slate-700 hover:border-emerald-500/50 transition group"
+                  >
+                    <div className="font-bold text-white group-hover:text-emerald-400">Resend</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">API Key (re_...). Requiere dominio o test.</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset('sendgrid')}
+                    className="bg-slate-900 hover:bg-slate-800 text-left p-2 rounded-lg border border-slate-700 hover:border-emerald-500/50 transition group"
+                  >
+                    <div className="font-bold text-white group-hover:text-emerald-400">SendGrid</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">API Key (SG....) de Twilio SendGrid</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset('webhook')}
+                    className="bg-slate-900 hover:bg-slate-800 text-left p-2 rounded-lg border border-slate-700 hover:border-emerald-500/50 transition group"
+                  >
+                    <div className="font-bold text-white group-hover:text-emerald-400">Webhook / Make</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Zapier, Make, n8n, Apps Script</div>
+                  </button>
+                </div>
               </div>
 
               <form onSubmit={handleSaveEmail} className="bg-slate-950 p-4 border border-slate-800 rounded-xl space-y-4">
                 <h3 className="text-sm font-bold text-white flex items-center justify-between">
-                  <span>Configuración del Servicio de Correo</span>
+                  <span>Parámetros del Servicio de Correo</span>
                   <span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                    ● Servicio Activo
+                    ● Listo para configurar
                   </span>
                 </h3>
 
@@ -570,6 +664,9 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
                     onChange={(e) => setEmailFromAddress(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                   />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Dirección que verán los clientes como remitente. Si usa Resend en modo pruebas sin verificar dominio, puede usar temporalmente <code className="text-emerald-400">onboarding@resend.dev</code>.
+                  </p>
                 </div>
 
                 <div>
@@ -590,26 +687,29 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    URL Webhook / API Servidor Correo (Opcional)
+                    Clave de API / Token de Autenticación
                   </label>
                   <input
-                    type="url"
-                    placeholder="https://api.resend.com/emails o webhook de la empresa"
-                    value={emailWebhookUrl}
-                    onChange={(e) => setEmailWebhookUrl(e.target.value)}
+                    type="password"
+                    placeholder="xkeysib-... (Brevo) o re_... (Resend) o SG.... (SendGrid)"
+                    value={emailApiKey}
+                    onChange={(e) => setEmailApiKey(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                   />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    El servidor detecta automáticamente el proveedor según el formato de la clave (<code className="text-emerald-400">xkeysib-</code> = Brevo, <code className="text-emerald-400">re_</code> = Resend, <code className="text-emerald-400">SG.</code> = SendGrid).
+                  </p>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Clave de API / Token de Autenticación (Opcional)
+                    URL Webhook / Servidor Personalizado (Opcional)
                   </label>
                   <input
-                    type="password"
-                    placeholder="re_123456789"
-                    value={emailApiKey}
-                    onChange={(e) => setEmailApiKey(e.target.value)}
+                    type="url"
+                    placeholder="https://api.resend.com/emails o webhook de Make/Zapier/n8n"
+                    value={emailWebhookUrl}
+                    onChange={(e) => setEmailWebhookUrl(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                   />
                 </div>
@@ -634,11 +734,14 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
 
               {/* Test Email Box */}
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
-                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Probar Envío de Correo Electrónico</h4>
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center justify-between">
+                  <span>Probar Envío de Correo Electrónico</span>
+                  <span className="text-[10px] text-slate-400 normal-case">Presione F12 en su navegador para ver la traza completa</span>
+                </h4>
                 <div className="flex gap-2">
                   <input
                     type="email"
-                    placeholder="cliente@ejemplo.com"
+                    placeholder="administracion@marraque.es o su email personal de prueba"
                     value={testEmailAddress}
                     onChange={(e) => setTestEmailAddress(e.target.value)}
                     className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
@@ -655,9 +758,12 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
                 </div>
 
                 {testEmailStatus.message && (
-                  <p className={`text-xs font-medium mt-1 ${testEmailStatus.success ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {testEmailStatus.message}
-                  </p>
+                  <div className={`text-xs p-3 rounded-lg border ${testEmailStatus.success ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-rose-500/10 border-rose-500/20 text-rose-300'}`}>
+                    <p className="font-semibold">{testEmailStatus.message}</p>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      💡 Puede abrir las herramientas de desarrollador del navegador (F12 o Clic Derecho -&gt; Inspeccionar -&gt; pestaña Consola) para ver los registros detallados de red y la respuesta exacta del proveedor.
+                    </p>
+                  </div>
                 )}
               </div>
 
