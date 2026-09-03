@@ -208,7 +208,7 @@ async function startServer() {
             errMsg.includes('401')
           ) {
             return res.status(403).json({
-              error: 'La Clave API de Gemini actual fue reportada como revocada o no válida ("leaked"). Por favor, genera o actualiza una nueva clave GEMINI_API_KEY en el menú de Ajustes (Settings > Secrets) de Google AI Studio.',
+              error: 'AVISA A LA OFICINA: La Clave API de Gemini actual fue reportada como revocada o no válida ("leaked"). Por favor, la oficina debe actualizar la clave GEMINI_API_KEY en Ajustes (Settings > Secrets) de Google AI Studio.',
               isApiKeyError: true,
               detail: errMsg,
             });
