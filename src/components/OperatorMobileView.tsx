@@ -289,7 +289,13 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
 
         setMissingFields(missing);
 
-        if (missing.length > 0) {
+        if (!extNum && !cName && (!qty || qty <= 0)) {
+          // Total scan failure or API key error
+          setScanWarningMsg(
+            extractedData.notes ||
+              'No se pudieron detectar automáticamente los datos del albarán. Por favor, revise la clave API de Gemini en Ajustes o introduzca los datos manualmente.'
+          );
+        } else if (missing.length > 0) {
           setScanWarningMsg(
             '⚠️ Reconocimiento parcial: Algunos datos no se pudieron leer con total claridad de la foto. Por favor, introduzca o complete los campos destacados en naranja a continuación.'
           );
