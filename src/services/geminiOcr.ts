@@ -287,3 +287,31 @@ export async function scanAlbaranWithGemini(
       : 'No se pudieron detectar automáticamente los datos. Por favor, complete los campos a mano.',
   };
 }
+
+/**
+ * Checks if the Gemini API Key is currently valid and working.
+ */
+export async function checkGeminiApiStatus(): Promise<{
+  configured: boolean;
+  valid: boolean;
+  isLeakedOrRevoked?: boolean;
+  message: string;
+}> {
+  try {
+    const res = await fetch('/api/gemini-status');
+    if (res.ok) {
+      return await res.json();
+    }
+    return {
+      configured: false,
+      valid: false,
+      message: `Error al comprobar estado del servidor (${res.status})`,
+    };
+  } catch (err: any) {
+    return {
+      configured: false,
+      valid: false,
+      message: err.message || 'Sin conexión con el servicio de IA',
+    };
+  }
+}
