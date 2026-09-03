@@ -108,8 +108,8 @@ async function startServer() {
         ? imageBase64.split(',')[1]
         : imageBase64;
 
-      // Intentar primero con gemini-2.5-flash y si falla probar gemini-3.7-flash
-      const modelsToTry = ['gemini-2.5-flash', 'gemini-3.7-flash'];
+      // Modelos estándar de Gemini Vision
+      const modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
       let lastError: any = null;
       let rawResponseText = '';
 
@@ -135,7 +135,7 @@ async function startServer() {
           });
 
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Timeout de OCR con ${modelName} (18s)`)), 18000)
+            setTimeout(() => reject(new Error(`Timeout de OCR con ${modelName} (15s)`)), 15000)
           );
 
           const response = await Promise.race([generatePromise, timeoutPromise]);
@@ -144,8 +144,25 @@ async function startServer() {
             break; // Exito con este modelo
           }
         } catch (mErr: any) {
-          console.warn(`Intento de OCR con ${modelName} no completado:`, mErr.message);
+          const errMsg = mErr?.message || String(mErr);
+          console.warn(`Intento de OCR con ${modelName} no completado:`, errMsg);
           lastError = mErr;
+
+          // Si el error es de autenticación o API Key revocada/filtrada, fallar rápido sin esperar a probar otros modelos
+          if (
+            errMsg.includes('leaked') ||
+            errMsg.includes('API key') ||
+            errMsg.includes('PERMISSION_DENIED') ||
+            errMsg.includes('API_KEY_INVALID') ||
+            errMsg.includes('403') ||
+            errMsg.includes('401')
+          ) {
+            return res.status(403).json({
+              error: 'La Clave API de Gemini actual fue reportada como revocada o no válida ("leaked"). Por favor, genera o actualiza una nueva clave GEMINI_API_KEY en el menú de Ajustes (Settings > Secrets) de Google AI Studio.',
+              isApiKeyError: true,
+              detail: errMsg,
+            });
+          }
         }
       }
 
