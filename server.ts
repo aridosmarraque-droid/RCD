@@ -62,6 +62,56 @@ async function startServer() {
 
   app.use(express.json({ limit: '25mb' }));
 
+  // API Route: Estado y Diagnóstico de la Clave Gemini API
+  app.get('/api/gemini-status', async (_req, res) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.json({
+          configured: false,
+          valid: false,
+          message: 'No hay ninguna clave GEMINI_API_KEY configurada en Secrets.',
+        });
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: { 'User-Agent': 'aistudio-build' },
+        },
+      });
+
+      // Petición de comprobación rápida
+      await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: 'ping',
+      });
+
+      return res.json({
+        configured: true,
+        valid: true,
+        message: 'Clave Gemini API activa y funcionando correctamente.',
+      });
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      const isLeakedOrRevoked =
+        errMsg.includes('leaked') ||
+        errMsg.includes('PERMISSION_DENIED') ||
+        errMsg.includes('API_KEY_INVALID') ||
+        errMsg.includes('403') ||
+        errMsg.includes('401');
+
+      return res.json({
+        configured: true,
+        valid: false,
+        isLeakedOrRevoked,
+        message: isLeakedOrRevoked
+          ? 'La clave de Gemini API actual está revocada o reportada como filtrada por Google. Cámbiala en Secrets.'
+          : `Error al verificar la clave: ${errMsg}`,
+      });
+    }
+  });
+
   // API Route: OCR Albarán con Gemini Vision
   app.post('/api/scan-albaran', async (req, res) => {
     try {
