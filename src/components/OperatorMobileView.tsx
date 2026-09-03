@@ -691,21 +691,25 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
               scanWarningMsg.toLowerCase().includes('clave api') ||
               scanWarningMsg.toLowerCase().includes('gemini_api_key') ||
               scanWarningMsg.toLowerCase().includes('revocada') ||
-              scanWarningMsg.toLowerCase().includes('leaked') ? (
-                <div className="bg-rose-950/60 border border-rose-500/80 rounded-2xl p-4 my-3 text-rose-200 text-xs flex items-start justify-between gap-3 shadow-xl">
+              scanWarningMsg.toLowerCase().includes('leaked') ||
+              scanWarningMsg.toLowerCase().includes('avisa a la oficina') ? (
+                <div className="bg-rose-950/70 border-2 border-rose-500 rounded-2xl p-4 my-3 text-rose-200 text-xs flex items-start justify-between gap-3 shadow-2xl animate-fade-in">
                   <div className="flex items-start space-x-3">
-                    <div className="bg-rose-500/20 p-2 rounded-xl border border-rose-500/40 shrink-0 mt-0.5">
-                      <KeyRound className="w-5 h-5 text-rose-400" />
+                    <div className="bg-rose-500/30 p-2.5 rounded-xl border border-rose-500/50 shrink-0 mt-0.5 text-rose-400">
+                      <KeyRound className="w-6 h-6 animate-pulse" />
                     </div>
                     <div>
+                      <div className="font-black text-rose-300 tracking-wider text-xs uppercase mb-1 bg-rose-500/20 px-2.5 py-0.5 rounded-md inline-block border border-rose-500/40">
+                        📢 AVISA A LA OFICINA
+                      </div>
                       <div className="font-extrabold text-white text-sm mb-1">
-                        ⚠️ Clave Gemini API Deshabilitada o Inválida
+                        AVISA A LA OFICINA: Clave Gemini API Deshabilitada o Inválida
                       </div>
                       <p className="text-rose-100 text-xs leading-relaxed mb-2 font-medium">
-                        {scanWarningMsg}
+                        {scanWarningMsg.startsWith('AVISA A LA OFICINA') ? scanWarningMsg : `AVISA A LA OFICINA: ${scanWarningMsg}`}
                       </p>
-                      <div className="bg-rose-900/40 p-2.5 rounded-xl border border-rose-800/50 text-[11px] text-rose-200">
-                        <strong>Solución:</strong> Abre el menú <em>Settings &gt; Secrets</em> de Google AI Studio, selecciona tu nueva clave activa en <code>GEMINI_API_KEY</code> y pulsa <em>Apply changes</em>.
+                      <div className="bg-rose-900/40 p-2.5 rounded-xl border border-rose-800/60 text-[11px] text-rose-200">
+                        <strong>Instrucción para Oficina / Administrador:</strong> Entrar en <em>Settings &gt; Secrets</em> de Google AI Studio, seleccionar la clave activa en <code>GEMINI_API_KEY</code> y pulsar <em>Apply changes</em>. El operario puede continuar introduciendo los datos a mano mientras tanto.
                       </div>
                     </div>
                   </div>
