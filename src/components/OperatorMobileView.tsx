@@ -15,12 +15,13 @@ import {
   RefreshCw,
   Info,
   X,
-  Edit3
+  Edit3,
+  KeyRound
 } from 'lucide-react';
 import { Albaran, OCRScanResult, WasteType } from '../types/rcd';
 import { OFFICIAL_WASTE_TYPES, RCDService } from '../services/rcdStorage';
 import { watermarkTruckPhoto } from '../utils/photoWatermark';
-import { scanAlbaranWithGemini } from '../services/geminiOcr';
+import { scanAlbaranWithGemini, checkGeminiApiStatus } from '../services/geminiOcr';
 import { compressImage, getBase64SizeKB } from '../utils/imageCompressor';
 
 interface OperatorMobileViewProps {
@@ -685,24 +686,55 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
               </div>
             )}
 
-            {/* OCR Notice / Incomplete recognition warning banner */}
+            {/* OCR Notice / Incomplete recognition or API Key warning banner */}
             {scanWarningMsg && !isScanning && (
-              <div className="bg-amber-950/40 border border-amber-500/50 rounded-2xl p-4 my-3 text-amber-200 text-xs flex items-start justify-between gap-3 shadow-lg">
-                <div className="flex items-start space-x-2.5">
-                  <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-bold text-white text-xs sm:text-sm mb-0.5">Atención en el Reconocimiento</div>
-                    <p className="text-slate-300 text-xs leading-relaxed">{scanWarningMsg}</p>
+              scanWarningMsg.toLowerCase().includes('clave api') ||
+              scanWarningMsg.toLowerCase().includes('gemini_api_key') ||
+              scanWarningMsg.toLowerCase().includes('revocada') ||
+              scanWarningMsg.toLowerCase().includes('leaked') ? (
+                <div className="bg-rose-950/60 border border-rose-500/80 rounded-2xl p-4 my-3 text-rose-200 text-xs flex items-start justify-between gap-3 shadow-xl">
+                  <div className="flex items-start space-x-3">
+                    <div className="bg-rose-500/20 p-2 rounded-xl border border-rose-500/40 shrink-0 mt-0.5">
+                      <KeyRound className="w-5 h-5 text-rose-400" />
+                    </div>
+                    <div>
+                      <div className="font-extrabold text-white text-sm mb-1">
+                        ⚠️ Clave Gemini API Deshabilitada o Inválida
+                      </div>
+                      <p className="text-rose-100 text-xs leading-relaxed mb-2 font-medium">
+                        {scanWarningMsg}
+                      </p>
+                      <div className="bg-rose-900/40 p-2.5 rounded-xl border border-rose-800/50 text-[11px] text-rose-200">
+                        <strong>Solución:</strong> Abre el menú <em>Settings &gt; Secrets</em> de Google AI Studio, selecciona tu nueva clave activa en <code>GEMINI_API_KEY</code> y pulsa <em>Apply changes</em>.
+                      </div>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setScanWarningMsg(null)}
+                    className="text-rose-300 hover:text-white p-1 rounded-lg transition shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setScanWarningMsg(null)}
-                  className="text-slate-400 hover:text-white p-1 rounded-lg transition"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+              ) : (
+                <div className="bg-amber-950/40 border border-amber-500/50 rounded-2xl p-4 my-3 text-amber-200 text-xs flex items-start justify-between gap-3 shadow-lg">
+                  <div className="flex items-start space-x-2.5">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold text-white text-xs sm:text-sm mb-0.5">Atención en el Reconocimiento</div>
+                      <p className="text-slate-300 text-xs leading-relaxed">{scanWarningMsg}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setScanWarningMsg(null)}
+                    className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )
             )}
 
             {/* Preview of Albaran Photo */}
