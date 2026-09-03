@@ -1,4 +1,3 @@
-import { GoogleGenAI } from '@google/genai';
 import { OCRScanResult } from '../types/rcd';
 
 const ALBARAN_PROMPT = `Actúa como un sistema experto de OCR y visión artificial de máxima precisión especializado en los albaranes de entrega y pesaje de la empresa "ÁRIDOS MARRAQUE S.L." (y plantas de valorización de RCD / canteras de áridos).
@@ -208,8 +207,8 @@ async function resizeImageForOCR(dataUrl: string, maxDim = 1800): Promise<string
 }
 
 /**
- * Perform OCR on an Albarán / SAP Ticket image using server API or client Gemini Vision.
- * Implements a generous 25-second timeout allowing multimodal vision model full inference.
+ * Perform OCR on an Albarán / SAP Ticket image using server API (/api/scan-albaran).
+ * Uses high-accuracy multimodal Gemini vision models on the server.
  */
 export async function scanAlbaranWithGemini(
   imageBase64: string,
@@ -234,14 +233,10 @@ export async function scanAlbaranWithGemini(
     }
   }
 
-  const base64Data = preparedBase64.includes(',')
-    ? preparedBase64.split(',')[1]
-    : preparedBase64;
-
-  // 1. Try server-side API endpoint first (/api/scan-albaran) with 25-second timeout
+  // 1. Call server-side API endpoint (/api/scan-albaran)
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
 
     // Link external signal if provided
     if (externalSignal) {
@@ -269,64 +264,14 @@ export async function scanAlbaranWithGemini(
     }
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      serverErrorMsg = 'Tiempo máximo de reconocimiento (25s) superado o cancelado por el usuario.';
+      serverErrorMsg = 'Tiempo máximo de reconocimiento superado o detenido por el usuario.';
     } else {
       serverErrorMsg = err.message || 'Error de conexión con el servicio OCR';
     }
     console.warn('OCR fetch warning:', serverErrorMsg);
   }
 
-  // 2. Fallback to direct client-side Gemini Vision call if client API key is available
-  const clientKey =
-    (import.meta.env && import.meta.env.VITE_GEMINI_API_KEY) ||
-    (typeof process !== 'undefined' && process.env && process.env.GEMINI_API_KEY) ||
-    (window as any).GEMINI_API_KEY;
-
-  if (clientKey && !externalSignal?.aborted) {
-    try {
-      const ai = new GoogleGenAI({ apiKey: clientKey });
-      const clientCallPromise = ai.models.generateContent({
-        model: 'gemini-3.7-flash',
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType: detectedMimeType,
-              },
-            },
-            { text: ALBARAN_PROMPT },
-          ],
-        },
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
-
-      const clientTimeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout cliente (20s)')), 20000)
-      );
-
-      const res: any = await Promise.race([clientCallPromise, clientTimeout]);
-
-      if (res && res.text) {
-        let cleanText = res.text.trim();
-        if (cleanText.startsWith('```')) {
-          cleanText = cleanText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-        }
-        const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          cleanText = jsonMatch[0];
-        }
-        const parsed = JSON.parse(cleanText);
-        return cleanExtractedOCRData(parsed);
-      }
-    } catch (clientErr: any) {
-      console.warn('Client-side Gemini Vision OCR error:', clientErr);
-    }
-  }
-
-  // 3. Return initial fallback values with explicit guidance notes so the operator can fill manually
+  // Return initial fallback values with explicit guidance notes so the operator can fill manually
   return {
     numAlbaran: '',
     clientCode: '',
@@ -338,7 +283,7 @@ export async function scanAlbaranWithGemini(
     date: new Date().toISOString().split('T')[0],
     time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
     notes: serverErrorMsg
-      ? `Aviso: ${serverErrorMsg} Por favor, complete los datos manualmente.`
-      : 'No se pudieron detectar todos los datos del albarán. Por favor, introduzca los campos restantes a mano.',
+      ? `Aviso: ${serverErrorMsg}`
+      : 'No se pudieron detectar automáticamente los datos. Por favor, complete los campos a mano.',
   };
 }
