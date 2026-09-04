@@ -27,6 +27,7 @@ import { ClientsDirectoryView } from './ClientsDirectoryView';
 import { UsersManagementView } from './UsersManagementView';
 import { PhotoLightboxModal } from './PhotoLightboxModal';
 import { EditAlbaranModal } from './EditAlbaranModal';
+import { SapAuditListView } from './SapAuditListView';
 import { openPrintableCertificate, openOrDownloadCertificate, downloadSignedPdfFile } from '../utils/certificatePdf';
 import { IssueCertificateModal } from './IssueCertificateModal';
 import { WasteTypesConfigModal } from './WasteTypesConfigModal';
@@ -66,7 +67,7 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
   users,
   onRefreshData,
 }) => {
-  const [adminTab, setAdminTab] = useState<'analytics' | 'albaranes' | 'clients' | 'certificates' | 'users'>('analytics');
+  const [adminTab, setAdminTab] = useState<'analytics' | 'albaranes' | 'sap-audit' | 'clients' | 'certificates' | 'users'>('analytics');
   const [selectedPhotoAlbaran, setSelectedPhotoAlbaran] = useState<Albaran | null>(null);
   const [selectedAlbaranToEdit, setSelectedAlbaranToEdit] = useState<Albaran | null>(null);
   const [selectedClientForCert, setSelectedClientForCert] = useState<Client | null>(null);
@@ -276,6 +277,20 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
               }`}
             >
               📄 Todos los Albaranes ({albaranes.length})
+            </button>
+            <button
+              onClick={() => setAdminTab('sap-audit')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 ${
+                adminTab === 'sap-audit' ? 'bg-sky-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+              }`}
+              title="Listado para puntear albaranes físicos de SAP y verificar registro de viajes"
+            >
+              <span>🔍 Punteo SAP</span>
+              {albaranes.filter((a) => !a.sapChecked).length > 0 && (
+                <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-1.5 py-0.5 rounded-full">
+                  {albaranes.filter((a) => !a.sapChecked).length} pend.
+                </span>
+              )}
             </button>
             <button
               onClick={() => setAdminTab('clients')}
@@ -520,15 +535,16 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                     {renderSortHeader('licensePlate', 'Matrícula')}
                     {renderSortHeader('wasteTypeName', 'Residuo (LER)')}
                     {renderSortHeader('quantityTons', 'Cantidad (t)', 'right')}
-                    <th className="py-3 px-4 text-center">Fotos</th>
-                    <th className="py-3 px-4 text-center">Estado</th>
+                    <th className="py-3 px-4 text-center">Fotos (3/3)</th>
+                    <th className="py-3 px-4 text-center">Punteo SAP</th>
+                    <th className="py-3 px-4 text-center">Certificado</th>
                     <th className="py-3 px-4 text-center">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {sortedAlbaranes.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-12 text-center text-slate-400">
+                      <td colSpan={10} className="py-12 text-center text-slate-400">
                         <div className="flex flex-col items-center justify-center space-y-2">
                           <FileText className="w-8 h-8 text-slate-600 mb-1" />
                           <span className="font-bold text-slate-300 text-sm">No hay albaranes registrados</span>
@@ -548,12 +564,36 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                         <td className="py-3 px-4">{alb.wasteTypeCode} - {alb.wasteTypeName}</td>
                         <td className="py-3 px-4 text-right font-extrabold text-white">{alb.quantityTons.toFixed(2)} t</td>
                         <td className="py-3 px-4 text-center">
-                          <button
-                            onClick={() => setSelectedPhotoAlbaran(alb)}
-                            className="text-sky-400 bg-sky-500/10 px-2 py-1 rounded border border-sky-500/20 font-semibold hover:bg-sky-500/20 transition"
-                          >
-                            Ver Fotos
-                          </button>
+                          {(() => {
+                            const pCount = [alb.albaranPhotoUrl, alb.truckPhotoUrl, alb.unloadPhotoUrl].filter(Boolean).length;
+                            return (
+                              <button
+                                onClick={() => setSelectedPhotoAlbaran(alb)}
+                                className={`px-2 py-1 rounded text-xs font-bold border transition inline-flex items-center space-x-1 ${
+                                  pCount === 3
+                                    ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20'
+                                    : pCount > 0
+                                    ? 'text-amber-300 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20'
+                                    : 'text-rose-300 bg-rose-500/10 border-rose-500/20 hover:bg-rose-500/20'
+                                }`}
+                                title="Ver, añadir fotos faltantes o sustituir por error"
+                              >
+                                <span>📷</span>
+                                <span>{pCount}/3</span>
+                              </button>
+                            );
+                          })()}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {alb.sapChecked ? (
+                            <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full text-[10px] font-bold border border-emerald-500/20 inline-flex items-center space-x-1" title={`Punteado SAP el ${alb.sapCheckedAt || ''}`}>
+                              <span>✓ SAP OK</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full text-[10px] font-semibold border border-slate-700 inline-flex items-center space-x-1">
+                              <span>⏳ Pendiente</span>
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-center">
                           {alb.certified ? (
@@ -615,6 +655,17 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* TAB: SAP AUDIT & RECONCILIATION */}
+      {adminTab === 'sap-audit' && (
+        <SapAuditListView
+          albaranes={albaranes}
+          clients={clients}
+          onRefreshData={onRefreshData}
+          onOpenPhotoManager={(alb) => setSelectedPhotoAlbaran(alb)}
+          onEditAlbaran={(alb) => setSelectedAlbaranToEdit(alb)}
+        />
       )}
 
       {/* TAB 3: CLIENTS DIRECTORY */}
@@ -786,10 +837,12 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
         />
       )}
 
-      {/* Lightbox Modal */}
+      {/* Lightbox Modal with Admin Photo Management */}
       <PhotoLightboxModal
         albaran={selectedPhotoAlbaran}
+        isAdmin={true}
         onClose={() => setSelectedPhotoAlbaran(null)}
+        onAlbaranUpdated={() => onRefreshData()}
       />
 
       {/* Sign Certificate Modal */}
