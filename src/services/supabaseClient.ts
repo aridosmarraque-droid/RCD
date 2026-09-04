@@ -132,6 +132,10 @@ export class SupabaseService {
       rcd_certificate_number: alb.certificateNumber || null,
       rcd_notifications_sent: alb.notificationsSent || { mobileSent: false, emailSent: false },
       rcd_created_at: alb.createdAt || new Date().toISOString(),
+      rcd_sap_checked: alb.sapChecked ?? false,
+      rcd_sap_checked_at: alb.sapCheckedAt || null,
+      rcd_sap_checked_by: alb.sapCheckedBy || null,
+      rcd_sap_notes: alb.sapNotes || null,
     };
   }
 
@@ -159,6 +163,10 @@ export class SupabaseService {
       certificateNumber: row.rcd_certificate_number || undefined,
       notificationsSent: row.rcd_notifications_sent || undefined,
       createdAt: row.rcd_created_at || new Date().toISOString(),
+      sapChecked: Boolean(row.rcd_sap_checked),
+      sapCheckedAt: row.rcd_sap_checked_at || undefined,
+      sapCheckedBy: row.rcd_sap_checked_by || undefined,
+      sapNotes: row.rcd_sap_notes || undefined,
     };
   }
 
@@ -298,7 +306,18 @@ export class SupabaseService {
       const { error } = await supabase.from('rcd_albaranes').insert(row);
 
       if (error) {
-        console.warn('Notice inserting rcd_albaranes into Supabase:', error.message || error);
+        // Fallback if rcd_sap_* columns do not exist in remote Supabase schema
+        const errStr = (error.message || '').toLowerCase();
+        if (errStr.includes('rcd_sap_') || errStr.includes('column') || errStr.includes('schema')) {
+          const fallbackRow = { ...row };
+          delete (fallbackRow as any).rcd_sap_checked;
+          delete (fallbackRow as any).rcd_sap_checked_at;
+          delete (fallbackRow as any).rcd_sap_checked_by;
+          delete (fallbackRow as any).rcd_sap_notes;
+          await supabase.from('rcd_albaranes').insert(fallbackRow);
+        } else {
+          console.warn('Notice inserting rcd_albaranes into Supabase:', error.message || error);
+        }
       }
     } catch (err) {
       console.warn('Notice inserting rcd_albaranes into Supabase:', err);
@@ -314,7 +333,18 @@ export class SupabaseService {
       const { error } = await supabase.from('rcd_albaranes').upsert(row, { onConflict: 'rcd_id' });
 
       if (error) {
-        console.warn('Notice upserting rcd_albaranes into Supabase:', error.message || error);
+        // Fallback if rcd_sap_* columns do not exist in remote Supabase schema
+        const errStr = (error.message || '').toLowerCase();
+        if (errStr.includes('rcd_sap_') || errStr.includes('column') || errStr.includes('schema')) {
+          const fallbackRow = { ...row };
+          delete (fallbackRow as any).rcd_sap_checked;
+          delete (fallbackRow as any).rcd_sap_checked_at;
+          delete (fallbackRow as any).rcd_sap_checked_by;
+          delete (fallbackRow as any).rcd_sap_notes;
+          await supabase.from('rcd_albaranes').upsert(fallbackRow, { onConflict: 'rcd_id' });
+        } else {
+          console.warn('Notice upserting rcd_albaranes into Supabase:', error.message || error);
+        }
       }
     } catch (err) {
       console.warn('Notice upserting rcd_albaranes into Supabase:', err);
