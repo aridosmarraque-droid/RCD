@@ -478,8 +478,13 @@ export class RCDService {
 
     const currentAlbaran = albaranes[index];
 
-    // Restricción estricta: Si un albarán ya se ha adjuntado a un certificado ya no puede ser modificado
-    if (currentAlbaran.certified) {
+    // Restricción estricta: Si un albarán ya se ha adjuntado a un certificado ya no puede ser modificado en pesaje/LER
+    // (A menos que sea solo punteo SAP o actualización de fotos como subsanación administrativa)
+    const isOnlyMetaOrPhotos = Object.keys(updates).every((key) =>
+      ['sapChecked', 'sapCheckedAt', 'sapCheckedBy', 'sapNotes', 'albaranPhotoUrl', 'truckPhotoUrl', 'unloadPhotoUrl'].includes(key)
+    );
+
+    if (currentAlbaran.certified && !isOnlyMetaOrPhotos) {
       throw new Error(
         `El albarán Nº ${currentAlbaran.numAlbaran} ya está certificado (${currentAlbaran.certificateNumber || 'en certificado'}) y no puede ser modificado.`
       );
@@ -495,11 +500,43 @@ export class RCDService {
       }
     }
 
+    // Compresión y reducción de fotos si vienen imágenes nuevas pesadas
+    let albaranPhotoUrl = updates.albaranPhotoUrl !== undefined ? updates.albaranPhotoUrl : currentAlbaran.albaranPhotoUrl;
+    let truckPhotoUrl = updates.truckPhotoUrl !== undefined ? updates.truckPhotoUrl : currentAlbaran.truckPhotoUrl;
+    let unloadPhotoUrl = updates.unloadPhotoUrl !== undefined ? updates.unloadPhotoUrl : currentAlbaran.unloadPhotoUrl;
+
+    if (albaranPhotoUrl && albaranPhotoUrl.startsWith('data:image') && albaranPhotoUrl.length > 500_000) {
+      try {
+        albaranPhotoUrl = await compressImage(albaranPhotoUrl, { maxDimension: 1200, quality: 0.78 });
+      } catch (e) {
+        console.warn('Fallback albaran photo compression:', e);
+      }
+    }
+
+    if (truckPhotoUrl && truckPhotoUrl.startsWith('data:image') && truckPhotoUrl.length > 500_000) {
+      try {
+        truckPhotoUrl = await compressImage(truckPhotoUrl, { maxDimension: 1200, quality: 0.78 });
+      } catch (e) {
+        console.warn('Fallback truck photo compression:', e);
+      }
+    }
+
+    if (unloadPhotoUrl && unloadPhotoUrl.startsWith('data:image') && unloadPhotoUrl.length > 500_000) {
+      try {
+        unloadPhotoUrl = await compressImage(unloadPhotoUrl, { maxDimension: 1200, quality: 0.78 });
+      } catch (e) {
+        console.warn('Fallback unload photo compression:', e);
+      }
+    }
+
     const updated: Albaran = {
       ...currentAlbaran,
       ...updates,
+      albaranPhotoUrl,
+      truckPhotoUrl,
+      unloadPhotoUrl,
       id, // Preserve original ID
-      certified: false, // Ensure certified stays false
+      certified: currentAlbaran.certified, // Preserve certification status
     };
 
     albaranes[index] = updated;
@@ -514,6 +551,97 @@ export class RCDService {
     }
 
     return updated;
+  }
+
+  /**
+   * Actualiza o subsana fotos de un albarán desde Modo Administrador
+   * Aplica compresión automática para reducir tamaño a ~100-150KB sin perder nitidez
+   */
+  static async updateAlbaranPhotos(
+    id: string,
+    photos: {
+      albaranPhotoUrl?: string;
+      truckPhotoUrl?: string;
+      unloadPhotoUrl?: string;
+    }
+  ): Promise<Albaran> {
+    return this.updateAlbaran(id, photos);
+  }
+
+  /**
+   * Punteo y Verificación individual de un albarán con SAP
+   */
+  static async toggleSapChecked(
+    id: string,
+    checked?: boolean,
+    notes?: string,
+    userName = 'Administrador'
+  ): Promise<Albaran> {
+    const albaranes = this.getAlbaranes();
+    const alb = albaranes.find((a) => a.id === id);
+    if (!alb) throw new Error(`Albarán ${id} no encontrado.`);
+
+    const newChecked = checked !== undefined ? checked : !alb.sapChecked;
+    const nowStr = new Date().toLocaleString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const updates: Partial<Albaran> = {
+      sapChecked: newChecked,
+      sapCheckedAt: newChecked ? nowStr : undefined,
+      sapCheckedBy: newChecked ? userName : undefined,
+      sapNotes: notes !== undefined ? notes : alb.sapNotes,
+    };
+
+    return this.updateAlbaran(id, updates);
+  }
+
+  /**
+   * Punteo en lote de múltiples albaranes con SAP
+   */
+  static async bulkSetSapChecked(
+    ids: string[],
+    checked: boolean,
+    notes?: string,
+    userName = 'Administrador'
+  ): Promise<Albaran[]> {
+    const nowStr = new Date().toLocaleString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const albaranes = this.getAlbaranes();
+    const updatedList: Albaran[] = [];
+
+    for (let i = 0; i < albaranes.length; i++) {
+      if (ids.includes(albaranes[i].id)) {
+        albaranes[i] = {
+          ...albaranes[i],
+          sapChecked: checked,
+          sapCheckedAt: checked ? nowStr : undefined,
+          sapCheckedBy: checked ? userName : undefined,
+          sapNotes: notes !== undefined ? notes : albaranes[i].sapNotes,
+        };
+        updatedList.push(albaranes[i]);
+      }
+    }
+
+    this.saveAlbaranesLocal(albaranes);
+
+    if (SupabaseService.isConfigured()) {
+      for (const alb of updatedList) {
+        SupabaseService.upsertAlbaran(alb).catch(() => {});
+      }
+    }
+
+    return updatedList;
   }
 
   static async deleteAlbaran(id: string): Promise<void> {
