@@ -51,6 +51,11 @@ export interface Albaran {
     emailSent: boolean;
     timestamp: string;
   };
+  // Punteo y Verificación de Albaranes con SAP (Modo Administrador)
+  sapChecked?: boolean; // TRUE = Albarán revisado y punteado contra SAP
+  sapCheckedAt?: string; // Fecha y hora de punteo (ISO o YYYY-MM-DD HH:MM)
+  sapCheckedBy?: string; // Usuario o Administrador que realizó el punteo
+  sapNotes?: string; // Observaciones opcionales del punteo en SAP (ej: "Asiento 4402", "OK")
 }
 
 export interface Certificate {
