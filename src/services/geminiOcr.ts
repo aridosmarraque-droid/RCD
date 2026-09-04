@@ -259,7 +259,26 @@ export async function scanAlbaranWithGemini(
       }
     } else {
       const errJson = await response.json().catch(() => ({}));
-      serverErrorMsg = errJson.error || `Error ${response.status} en servidor /api/scan-albaran`;
+      let rawErr = errJson.error || errJson.message || `Error ${response.status} en servidor /api/scan-albaran`;
+
+      if (typeof rawErr === 'object') {
+        rawErr = JSON.stringify(rawErr);
+      }
+
+      const rawErrUpper = String(rawErr).toUpperCase();
+      if (
+        rawErrUpper.includes('API_KEY_INVALID') ||
+        rawErrUpper.includes('UNAUTHENTICATED') ||
+        rawErrUpper.includes('LEAKED') ||
+        rawErrUpper.includes('PERMISSION_DENIED') ||
+        rawErrUpper.includes('401') ||
+        rawErrUpper.includes('403') ||
+        rawErrUpper.includes('CLAVE API')
+      ) {
+        serverErrorMsg = 'AVISA A LA OFICINA: La clave API de Gemini está deshabilitada o no autorizada (API_KEY_INVALID). Debe actualizarse GEMINI_API_KEY.';
+      } else {
+        serverErrorMsg = String(rawErr);
+      }
       console.warn('Server /api/scan-albaran error:', serverErrorMsg);
     }
   } catch (err: any) {
