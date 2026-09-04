@@ -79,36 +79,91 @@ export default async function handler(req: any, res: any) {
       ? imageBase64.split(',')[1]
       : imageBase64;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: detectedMimeType,
-            },
-          },
-          { text: ALBARAN_PROMPT },
-        ],
-      },
-      config: {
-        responseMimeType: 'application/json',
-      },
-    });
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'];
+    let lastError: any = null;
+    let rawResponseText = '';
 
-    if (response.text) {
-      let cleanText = response.text.trim();
+    for (const modelName of modelsToTry) {
+      try {
+        const generatePromise = ai.models.generateContent({
+          model: modelName,
+          contents: {
+            parts: [
+              {
+                inlineData: {
+                  data: base64Data,
+                  mimeType: detectedMimeType,
+                },
+              },
+              { text: ALBARAN_PROMPT },
+            ],
+          },
+          config: {
+            responseMimeType: 'application/json',
+            temperature: 0.1,
+          },
+        });
+
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Timeout de OCR con ${modelName}`)), 15000)
+        );
+
+        const response = await Promise.race([generatePromise, timeoutPromise]);
+        if (response && response.text) {
+          rawResponseText = response.text;
+          break;
+        }
+      } catch (mErr: any) {
+        lastError = mErr;
+        const errMsg = mErr?.message || String(mErr);
+        console.warn(`[Vercel] Error con ${modelName}:`, errMsg);
+
+        if (
+          errMsg.includes('API_KEY_INVALID') ||
+          errMsg.includes('UNAUTHENTICATED') ||
+          errMsg.includes('leaked') ||
+          errMsg.includes('PERMISSION_DENIED') ||
+          errMsg.includes('403') ||
+          errMsg.includes('401')
+        ) {
+          return res.status(403).json({
+            error: 'AVISA A LA OFICINA: La clave API de Gemini está deshabilitada, revocada o es inválida en Vercel (API_KEY_INVALID). Actualiza GEMINI_API_KEY en Vercel > Settings > Environment Variables.',
+            isApiKeyError: true,
+            detail: errMsg,
+          });
+        }
+      }
+    }
+
+    if (rawResponseText) {
+      let cleanText = rawResponseText.trim();
       if (cleanText.startsWith('```')) {
         cleanText = cleanText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+      }
+      const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanText = jsonMatch[0];
       }
       const parsed = JSON.parse(cleanText);
       return res.status(200).json(parsed);
     } else {
-      return res.status(500).json({ error: 'Sin respuesta de Gemini Vision' });
+      return res.status(500).json({ error: lastError?.message || 'Sin respuesta de Gemini Vision' });
     }
   } catch (err: any) {
     console.error('Error in Vercel api/scan-albaran:', err);
-    return res.status(500).json({ error: err.message || 'Error procesando el albarán con Gemini' });
+    const errMsg = err?.message || String(err);
+    if (
+      errMsg.includes('API_KEY_INVALID') ||
+      errMsg.includes('UNAUTHENTICATED') ||
+      errMsg.includes('leaked') ||
+      errMsg.includes('401') ||
+      errMsg.includes('403')
+    ) {
+      return res.status(403).json({
+        error: 'AVISA A LA OFICINA: La clave API de Gemini está deshabilitada, revocada o es inválida en Vercel (API_KEY_INVALID). Actualiza GEMINI_API_KEY en Vercel > Settings > Environment Variables.',
+        isApiKeyError: true,
+      });
+    }
+    return res.status(500).json({ error: errMsg || 'Error procesando el albarán con Gemini' });
   }
 }
