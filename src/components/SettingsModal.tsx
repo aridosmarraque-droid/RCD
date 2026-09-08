@@ -145,8 +145,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
 
   const sqlMigrationCode = `-- ========================================================
 -- SCRIPT DE ACTUALIZACIÓN / MIGRACIÓN RÁPIDA PARA SUPABASE
--- (Ejecute esto si ya tenía creadas las tablas anteriormente)
+-- (Ejecute esto en el SQL Editor de Supabase)
 -- ========================================================
+
+-- 1. Campos de Punteo y Conciliación SAP en Albaranes
+ALTER TABLE IF EXISTS public.rcd_albaranes
+    ADD COLUMN IF NOT EXISTS rcd_sap_checked BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS rcd_sap_checked_at TEXT,
+    ADD COLUMN IF NOT EXISTS rcd_sap_checked_by TEXT,
+    ADD COLUMN IF NOT EXISTS rcd_sap_notes TEXT;
+
+-- 2. Campos de Firma Digital y Certificados
 ALTER TABLE IF EXISTS public.rcd_certificates
     ADD COLUMN IF NOT EXISTS rcd_status TEXT DEFAULT 'Pendiente de Firma',
     ADD COLUMN IF NOT EXISTS rcd_signature_data TEXT,
@@ -199,6 +208,10 @@ CREATE TABLE IF NOT EXISTS public.rcd_albaranes (
     rcd_certificate_id TEXT,
     rcd_certificate_number TEXT,
     rcd_notifications_sent JSONB DEFAULT '{"mobileSent": false, "emailSent": false}'::jsonb,
+    rcd_sap_checked BOOLEAN DEFAULT FALSE,
+    rcd_sap_checked_at TEXT,
+    rcd_sap_checked_by TEXT,
+    rcd_sap_notes TEXT,
     rcd_created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -419,7 +432,7 @@ CREATE POLICY "Acceso rcd_users" ON public.rcd_users FOR ALL USING (true) WITH C
                       <span>Script de Actualización / Migración Rápida</span>
                     </h4>
                     <p className="text-[11px] text-slate-400">
-                      Ejecute este comando si ya tenía tablas creadas para añadir las nuevas columnas de <strong>Firma Digital FNMT</strong> sin perder datos.
+                      Ejecute este comando en Supabase si ya tenía tablas creadas para añadir las nuevas columnas de <strong>Punteo / Conciliación SAP</strong> y <strong>Firma Digital FNMT</strong> sin perder ningún dato.
                     </p>
                   </div>
                   <button
