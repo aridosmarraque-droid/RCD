@@ -44,7 +44,7 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
 }) => {
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'checked'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'checked'>('pending');
   const [selectedClientId, setSelectedClientId] = useState<string>('all');
   const [dateRange, setDateRange] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
   const [startDate, setStartDate] = useState('');
@@ -387,16 +387,6 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
           {/* Status Tab Filter */}
           <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
             <button
-              onClick={() => setStatusFilter('all')}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition text-center ${
-                statusFilter === 'all'
-                  ? 'bg-slate-800 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Todos ({albaranes.length})
-            </button>
-            <button
               onClick={() => setStatusFilter('pending')}
               className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition text-center ${
                 statusFilter === 'pending'
@@ -415,6 +405,16 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
               }`}
             >
               ✅ Punteados ({albaranes.filter((a) => a.sapChecked).length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition text-center ${
+                statusFilter === 'all'
+                  ? 'bg-slate-800 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Todos ({albaranes.length})
             </button>
           </div>
 
