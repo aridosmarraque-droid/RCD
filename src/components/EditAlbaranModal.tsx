@@ -10,10 +10,16 @@ import {
   Clock,
   Scale,
   Lock,
-  Layers
+  Layers,
+  Camera,
+  Upload,
+  Trash2,
+  CheckCircle2,
+  RefreshCw
 } from 'lucide-react';
 import { Albaran, Client, WasteType } from '../types/rcd';
 import { RCDService } from '../services/rcdStorage';
+import { compressImage } from '../utils/imageCompressor';
 
 interface EditAlbaranModalProps {
   albaran: Albaran;
@@ -45,8 +51,47 @@ export const EditAlbaranModal: React.FC<EditAlbaranModalProps> = ({
   const [plantZone, setPlantZone] = useState(albaran.plantZone || 'Muelle A - Fosa de Triaje RCD');
   const [driverName, setDriverName] = useState(albaran.driverName || '');
 
+  // Gestión de fotos (subir faltantes o sustituir por error con compresión)
+  const [albaranPhotoUrl, setAlbaranPhotoUrl] = useState(albaran.albaranPhotoUrl || '');
+  const [truckPhotoUrl, setTruckPhotoUrl] = useState(albaran.truckPhotoUrl || '');
+  const [unloadPhotoUrl, setUnloadPhotoUrl] = useState(albaran.unloadPhotoUrl || '');
+  const [isAlbaranPhotoDeleted, setIsAlbaranPhotoDeleted] = useState(false);
+  const [isTruckPhotoDeleted, setIsTruckPhotoDeleted] = useState(false);
+  const [isUnloadPhotoDeleted, setIsUnloadPhotoDeleted] = useState(false);
+  const [uploadingType, setUploadingType] = useState<'albaran' | 'truck' | 'unload' | null>(null);
+
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>, type: 'albaran' | 'truck' | 'unload') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingType(type);
+    setErrorMsg(null);
+    try {
+      // Compresión inteligente a max 1200px y calidad 0.78 para no saturar memoria
+      const compressed = await compressImage(file, { maxDimension: 1200, quality: 0.78 });
+      if (type === 'albaran') {
+        setAlbaranPhotoUrl(compressed);
+        setIsAlbaranPhotoDeleted(false);
+      }
+      if (type === 'truck') {
+        setTruckPhotoUrl(compressed);
+        setIsTruckPhotoDeleted(false);
+      }
+      if (type === 'unload') {
+        setUnloadPhotoUrl(compressed);
+        setIsUnloadPhotoDeleted(false);
+      }
+    } catch (err: any) {
+      console.error('Error comprimiendo foto:', err);
+      setErrorMsg('No se pudo procesar la foto seleccionada.');
+    } finally {
+      setUploadingType(null);
+      e.target.value = '';
+    }
+  };
 
   const handleClientSelect = (clientId: string) => {
     setSelectedClientId(clientId);
@@ -91,6 +136,10 @@ export const EditAlbaranModal: React.FC<EditAlbaranModalProps> = ({
 
     setIsSaving(true);
     try {
+      const finalAlbaranPhoto = isAlbaranPhotoDeleted ? '' : (albaranPhotoUrl || albaran.albaranPhotoUrl || '');
+      const finalTruckPhoto = isTruckPhotoDeleted ? '' : (truckPhotoUrl || albaran.truckPhotoUrl || '');
+      const finalUnloadPhoto = isUnloadPhotoDeleted ? '' : (unloadPhotoUrl || albaran.unloadPhotoUrl || '');
+
       const updated = await RCDService.updateAlbaran(albaran.id, {
         numAlbaran: numAlbaran.trim().toUpperCase(),
         clientId: selectedClientId || albaran.clientId,
@@ -104,7 +153,13 @@ export const EditAlbaranModal: React.FC<EditAlbaranModalProps> = ({
         time,
         plantZone,
         driverName: driverName.trim(),
-      });
+        albaranPhotoUrl: finalAlbaranPhoto,
+        truckPhotoUrl: finalTruckPhoto,
+        unloadPhotoUrl: finalUnloadPhoto,
+        _deleteAlbaranPhoto: isAlbaranPhotoDeleted,
+        _deleteTruckPhoto: isTruckPhotoDeleted,
+        _deleteUnloadPhoto: isUnloadPhotoDeleted,
+      } as any);
 
       onSaved(updated);
       onClose();
@@ -349,6 +404,180 @@ export const EditAlbaranModal: React.FC<EditAlbaranModalProps> = ({
                 onChange={(e) => setTime(e.target.value)}
                 className="w-full bg-slate-950 text-slate-200 text-xs border border-slate-800 rounded-xl px-3 py-2 focus:outline-none disabled:opacity-50"
               />
+            </div>
+          </div>
+
+          {/* Gestión Fotográfica de Albarán (Añadir fotos que no se capturaron o sustituir por error) */}
+          <div className="pt-3 border-t border-slate-800/80 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-200 flex items-center space-x-1.5">
+                <Camera className="w-4 h-4 text-emerald-400" />
+                <span>Fotografías del Viaje (Albarán Papel, Camión y Descarga)</span>
+              </label>
+              <span className="text-[10px] text-emerald-400 font-medium">
+                Compresión automática activa (~120KB máx)
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Permite añadir fotos que no se hayan podido capturar en el momento de la descarga o sustituirlas si hubo un error.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              {/* Foto 1: Albarán Papel */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between text-[11px] font-bold text-sky-400 mb-1.5">
+                    <span>1. Albarán Papel</span>
+                    {albaranPhotoUrl ? (
+                      <span className="text-emerald-400 text-[10px]">✓ OK</span>
+                    ) : (
+                      <span className="text-amber-400 text-[10px]">Falta</span>
+                    )}
+                  </div>
+                  {albaranPhotoUrl ? (
+                    <div className="relative rounded-lg overflow-hidden border border-slate-800 aspect-[4/3] bg-slate-900 mb-2">
+                      <img src={albaranPhotoUrl} alt="Albarán Papel" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-slate-800 aspect-[4/3] flex flex-col items-center justify-center p-2 text-center text-[10px] text-slate-500 mb-2">
+                      Sin foto
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center space-x-1.5 pt-1">
+                  <label className="flex-1 cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold py-1.5 px-2 rounded-lg text-center transition flex items-center justify-center space-x-1">
+                    {uploadingType === 'albaran' ? (
+                      <RefreshCw className="w-3 h-3 animate-spin text-emerald-400" />
+                    ) : (
+                      <Upload className="w-3 h-3 text-sky-400" />
+                    )}
+                    <span>{albaranPhotoUrl ? 'Sustituir' : '+ Añadir'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handlePhotoSelect(e, 'albaran')}
+                    />
+                  </label>
+                  {albaranPhotoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAlbaranPhotoUrl('');
+                        setIsAlbaranPhotoDeleted(true);
+                      }}
+                      className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 rounded-lg"
+                      title="Quitar foto"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Foto 2: Camión Báscula */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between text-[11px] font-bold text-amber-400 mb-1.5">
+                    <span>2. Camión Báscula</span>
+                    {truckPhotoUrl ? (
+                      <span className="text-emerald-400 text-[10px]">✓ OK</span>
+                    ) : (
+                      <span className="text-amber-400 text-[10px]">Falta</span>
+                    )}
+                  </div>
+                  {truckPhotoUrl ? (
+                    <div className="relative rounded-lg overflow-hidden border border-slate-800 aspect-[4/3] bg-slate-900 mb-2">
+                      <img src={truckPhotoUrl} alt="Camión" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-slate-800 aspect-[4/3] flex flex-col items-center justify-center p-2 text-center text-[10px] text-slate-500 mb-2">
+                      Sin foto
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center space-x-1.5 pt-1">
+                  <label className="flex-1 cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold py-1.5 px-2 rounded-lg text-center transition flex items-center justify-center space-x-1">
+                    {uploadingType === 'truck' ? (
+                      <RefreshCw className="w-3 h-3 animate-spin text-emerald-400" />
+                    ) : (
+                      <Upload className="w-3 h-3 text-amber-400" />
+                    )}
+                    <span>{truckPhotoUrl ? 'Sustituir' : '+ Añadir'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handlePhotoSelect(e, 'truck')}
+                    />
+                  </label>
+                  {truckPhotoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTruckPhotoUrl('');
+                        setIsTruckPhotoDeleted(true);
+                      }}
+                      className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 rounded-lg"
+                      title="Quitar foto"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Foto 3: Descarga en Planta */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between text-[11px] font-bold text-emerald-400 mb-1.5">
+                    <span>3. Descarga Fosa</span>
+                    {unloadPhotoUrl ? (
+                      <span className="text-emerald-400 text-[10px]">✓ OK</span>
+                    ) : (
+                      <span className="text-amber-400 text-[10px]">Falta</span>
+                    )}
+                  </div>
+                  {unloadPhotoUrl ? (
+                    <div className="relative rounded-lg overflow-hidden border border-slate-800 aspect-[4/3] bg-slate-900 mb-2">
+                      <img src={unloadPhotoUrl} alt="Descarga" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-slate-800 aspect-[4/3] flex flex-col items-center justify-center p-2 text-center text-[10px] text-slate-500 mb-2">
+                      Sin foto
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center space-x-1.5 pt-1">
+                  <label className="flex-1 cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold py-1.5 px-2 rounded-lg text-center transition flex items-center justify-center space-x-1">
+                    {uploadingType === 'unload' ? (
+                      <RefreshCw className="w-3 h-3 animate-spin text-emerald-400" />
+                    ) : (
+                      <Upload className="w-3 h-3 text-emerald-400" />
+                    )}
+                    <span>{unloadPhotoUrl ? 'Sustituir' : '+ Añadir'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handlePhotoSelect(e, 'unload')}
+                    />
+                  </label>
+                  {unloadPhotoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUnloadPhotoUrl('');
+                        setIsUnloadPhotoDeleted(true);
+                      }}
+                      className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 rounded-lg"
+                      title="Quitar foto"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
