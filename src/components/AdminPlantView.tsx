@@ -842,7 +842,10 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
         albaran={selectedPhotoAlbaran}
         isAdmin={true}
         onClose={() => setSelectedPhotoAlbaran(null)}
-        onAlbaranUpdated={() => onRefreshData()}
+        onAlbaranUpdated={(updated) => {
+          setSelectedPhotoAlbaran(updated);
+          onRefreshData();
+        }}
       />
 
       {/* Sign Certificate Modal */}
