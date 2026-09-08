@@ -158,7 +158,7 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
   // Single Toggle SAP Checked
   const handleToggleCheck = async (alb: Albaran) => {
     try {
-      await RCDService.toggleSapChecked(alb.id, !alb.sapChecked, alb.sapNotes);
+      await RCDService.toggleSapChecked(alb.id, !alb.sapChecked, alb.sapNotes, 'Administrador', alb);
       onRefreshData();
     } catch (err: any) {
       alert(err.message || 'Error al actualizar punteo SAP.');
@@ -170,7 +170,7 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
     if (selectedIds.length === 0) return;
     setIsProcessing(true);
     try {
-      await RCDService.bulkSetSapChecked(selectedIds, checked);
+      await RCDService.bulkSetSapChecked(selectedIds, checked, undefined, 'Administrador', albaranes);
       setSelectedIds([]);
       onRefreshData();
     } catch (err: any) {
@@ -201,7 +201,9 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
       await RCDService.toggleSapChecked(
         noteEditingAlbaran.id,
         noteEditingAlbaran.sapChecked,
-        tempNote.trim() || undefined
+        tempNote.trim() || undefined,
+        'Administrador',
+        noteEditingAlbaran
       );
       setNoteEditingAlbaran(null);
       onRefreshData();
