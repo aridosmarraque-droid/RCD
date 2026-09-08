@@ -3,6 +3,7 @@ import { SupabaseService } from './supabaseClient';
 import { UltramsgService } from './ultramsgService';
 import { EmailService } from './emailService';
 import { compressImage } from '../utils/imageCompressor';
+import { saveAlbaranesToIndexedDB, loadAlbaranesFromIndexedDB } from './rcdIndexedDB';
 
 export const OFFICIAL_WASTE_TYPES: WasteType[] = [];
 
@@ -251,19 +252,42 @@ export class RCDService {
   // ===============================================
   // ALBARANES MANAGEMENT
   // ===============================================
+  private static _cachedAlbaranes: Albaran[] | null = null;
+
   static getAlbaranes(): Albaran[] {
+    if (this._cachedAlbaranes && this._cachedAlbaranes.length > 0) {
+      return this._cachedAlbaranes;
+    }
+
     try {
       const data = localStorage.getItem(STORAGE_KEYS.ALBARANES);
-      if (!data) {
-        return INITIAL_ALBARANES;
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          this._cachedAlbaranes = parsed;
+          return this._cachedAlbaranes;
+        }
       }
-      return JSON.parse(data);
     } catch {
-      return INITIAL_ALBARANES;
+      // Ignorar error de parsing
     }
+
+    return this._cachedAlbaranes || INITIAL_ALBARANES;
   }
 
   static async loadAlbaranesFromRemote(): Promise<Albaran[]> {
+    // Si la caché en memoria está vacía, intentar precargar desde IndexedDB donde están las fotos completas
+    if (!this._cachedAlbaranes || this._cachedAlbaranes.length === 0) {
+      try {
+        const idbAlbaranes = await loadAlbaranesFromIndexedDB();
+        if (idbAlbaranes && idbAlbaranes.length > 0) {
+          this._cachedAlbaranes = idbAlbaranes;
+        }
+      } catch (e) {
+        // Ignorar
+      }
+    }
+
     if (SupabaseService.isConfigured()) {
       try {
         const remoteAlbaranes = await SupabaseService.fetchAlbaranes();
@@ -335,26 +359,46 @@ export class RCDService {
   }
 
   static saveAlbaranesLocal(albaranes: Albaran[]): void {
+    // 1. SIEMPRE mantener la caché en memoria actualizada para búsquedas síncronas instantáneas
+    this._cachedAlbaranes = albaranes;
+
+    // 2. Persistir copia completa sin límite de cuota en IndexedDB
+    saveAlbaranesToIndexedDB(albaranes).catch(() => {});
+
+    // 3. Persistir en localStorage garantizando que NUNCA falle por QuotaExceededError
     try {
       localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(albaranes));
     } catch (quotaErr) {
-      console.warn('LocalStorage QuotaExceededError while saving albaranes. Compressing/pruning only older certified entries:', quotaErr);
-      // Solo podar fotos si la cuota del navegador (5MB) se satura, y únicamente de viajes antiguos ya certificados
-      const pruned = albaranes.map((alb) => {
-        if (alb.certified) {
-          return {
-            ...alb,
-            albaranPhotoUrl: alb.albaranPhotoUrl && alb.albaranPhotoUrl.length > 5000 ? '' : alb.albaranPhotoUrl,
-            truckPhotoUrl: alb.truckPhotoUrl && alb.truckPhotoUrl.length > 5000 ? '' : alb.truckPhotoUrl,
-            unloadPhotoUrl: alb.unloadPhotoUrl && alb.unloadPhotoUrl.length > 5000 ? '' : alb.unloadPhotoUrl,
-          };
-        }
-        return alb;
-      });
+      console.warn('LocalStorage QuotaExceededError. Aplicando almacenamiento inteligente por capas:', quotaErr);
+
+      // Nivel 1: Conservar fotos completas solo para los 5 albaranes más recientes
       try {
-        localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(pruned));
-      } catch (e2) {
-        console.error('Critical failure saving albaranes to localStorage:', e2);
+        const tier1 = albaranes.map((alb, index) => {
+          if (index >= 5) {
+            return {
+              ...alb,
+              albaranPhotoUrl: alb.albaranPhotoUrl && alb.albaranPhotoUrl.startsWith('data:image') ? '' : alb.albaranPhotoUrl,
+              truckPhotoUrl: alb.truckPhotoUrl && alb.truckPhotoUrl.startsWith('data:image') ? '' : alb.truckPhotoUrl,
+              unloadPhotoUrl: alb.unloadPhotoUrl && alb.unloadPhotoUrl.startsWith('data:image') ? '' : alb.unloadPhotoUrl,
+            };
+          }
+          return alb;
+        });
+        localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(tier1));
+      } catch (tier1Err) {
+        // Nivel 2: Limpiar fotos data:image de localStorage para salvar los metadatos completos (~20KB)
+        // Las fotos completas siguen 100% conservadas en memoria (_cachedAlbaranes), IndexedDB y Supabase
+        try {
+          const tier2 = albaranes.map((alb) => ({
+            ...alb,
+            albaranPhotoUrl: alb.albaranPhotoUrl && alb.albaranPhotoUrl.startsWith('data:image') ? '' : alb.albaranPhotoUrl,
+            truckPhotoUrl: alb.truckPhotoUrl && alb.truckPhotoUrl.startsWith('data:image') ? '' : alb.truckPhotoUrl,
+            unloadPhotoUrl: alb.unloadPhotoUrl && alb.unloadPhotoUrl.startsWith('data:image') ? '' : alb.unloadPhotoUrl,
+          }));
+          localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(tier2));
+        } catch (tier2Err) {
+          console.error('Fallo crítico guardando en localStorage:', tier2Err);
+        }
       }
     }
   }
@@ -527,7 +571,22 @@ export class RCDService {
 
   static async updateAlbaran(id: string, updates: Partial<Albaran>): Promise<Albaran> {
     const albaranes = this.getAlbaranes();
-    const index = albaranes.findIndex((a) => a.id === id);
+    let index = albaranes.findIndex((a) => a.id === id);
+
+    // Si no está en el listado activo y Supabase está configurado, recuperar desde remoto
+    if (index === -1 && SupabaseService.isConfigured()) {
+      try {
+        const remotes = await SupabaseService.fetchAlbaranes();
+        const remoteAlb = remotes?.find((r) => r.id === id);
+        if (remoteAlb) {
+          albaranes.push(remoteAlb);
+          index = albaranes.length - 1;
+        }
+      } catch (err) {
+        console.warn('Notice checking remote albaran in updateAlbaran:', err);
+      }
+    }
+
     if (index === -1) {
       throw new Error(`Albarán con ID ${id} no encontrado.`);
     }
@@ -643,10 +702,32 @@ export class RCDService {
     id: string,
     checked?: boolean,
     notes?: string,
-    userName = 'Administrador'
+    userName = 'Administrador',
+    fallbackAlbaran?: Albaran
   ): Promise<Albaran> {
     const albaranes = this.getAlbaranes();
-    const alb = albaranes.find((a) => a.id === id);
+    let alb = albaranes.find((a) => a.id === id);
+
+    // 1. Si no está en memoria pero recibimos fallbackAlbaran desde la interfaz
+    if (!alb && fallbackAlbaran && fallbackAlbaran.id === id) {
+      alb = fallbackAlbaran;
+      albaranes.push(alb);
+    }
+
+    // 2. Si sigue sin encontrarse, comprobar si está en remoto en Supabase
+    if (!alb && SupabaseService.isConfigured()) {
+      try {
+        const remotes = await SupabaseService.fetchAlbaranes();
+        const found = remotes?.find((r) => r.id === id);
+        if (found) {
+          alb = found;
+          albaranes.push(alb);
+        }
+      } catch (err) {
+        console.warn('Notice checking remote albaran in toggleSapChecked:', err);
+      }
+    }
+
     if (!alb) throw new Error(`Albarán ${id} no encontrado.`);
 
     const newChecked = checked !== undefined ? checked : !alb.sapChecked;
@@ -675,7 +756,8 @@ export class RCDService {
     ids: string[],
     checked: boolean,
     notes?: string,
-    userName = 'Administrador'
+    userName = 'Administrador',
+    fallbackList?: Albaran[]
   ): Promise<Albaran[]> {
     const nowStr = new Date().toLocaleString('es-ES', {
       day: '2-digit',
@@ -686,6 +768,18 @@ export class RCDService {
     });
 
     const albaranes = this.getAlbaranes();
+
+    // Incorporar cualquier albarán visible que faltase en el almacenamiento local
+    if (fallbackList && Array.isArray(fallbackList)) {
+      const existingIds = new Set(albaranes.map((a) => a.id));
+      for (const item of fallbackList) {
+        if (ids.includes(item.id) && !existingIds.has(item.id)) {
+          albaranes.push(item);
+          existingIds.add(item.id);
+        }
+      }
+    }
+
     const updatedList: Albaran[] = [];
 
     for (let i = 0; i < albaranes.length; i++) {
