@@ -268,8 +268,64 @@ export class RCDService {
       try {
         const remoteAlbaranes = await SupabaseService.fetchAlbaranes();
         if (remoteAlbaranes !== null && Array.isArray(remoteAlbaranes)) {
-          this.saveAlbaranesLocal(remoteAlbaranes);
-          return remoteAlbaranes;
+          // Fusión Inteligente (Smart Merge) para proteger fotos y punteo SAP contra sobreescrituras
+          const localAlbaranes = this.getAlbaranes();
+          const localMap = new Map<string, Albaran>(localAlbaranes.map((a) => [a.id, a]));
+
+          const mergedAlbaranes = remoteAlbaranes.map((remote) => {
+            const local = localMap.get(remote.id);
+            if (!local) return remote;
+
+            // 1. Fotos: Si el registro local ya tiene una foto válida y el remoto viene vacío o nulo
+            // (por ejemplo por latencia de subida o payload pendiente), conservar SIEMPRE la foto local
+            const albaranPhotoUrl =
+              local.albaranPhotoUrl && local.albaranPhotoUrl.trim().length > 0 && !local.albaranPhotoUrl.includes('[Foto Guardada]')
+                ? local.albaranPhotoUrl
+                : remote.albaranPhotoUrl || '';
+
+            const truckPhotoUrl =
+              local.truckPhotoUrl && local.truckPhotoUrl.trim().length > 0 && !local.truckPhotoUrl.includes('[Foto Guardada]')
+                ? local.truckPhotoUrl
+                : remote.truckPhotoUrl || '';
+
+            const unloadPhotoUrl =
+              local.unloadPhotoUrl && local.unloadPhotoUrl.trim().length > 0 && !local.unloadPhotoUrl.includes('[Foto Guardada]')
+                ? local.unloadPhotoUrl
+                : remote.unloadPhotoUrl || '';
+
+            // 2. Punteo SAP: Si en local está marcado como punteado (sapChecked: true) y en remoto viene false
+            // (por ejemplo, porque las columnas aún no se han migrado en la BBDD de Supabase), PRESERVAR el punteo local
+            const sapChecked = Boolean(remote.sapChecked || local.sapChecked);
+            const sapCheckedAt = remote.sapCheckedAt || (sapChecked ? local.sapCheckedAt : undefined);
+            const sapCheckedBy = remote.sapCheckedBy || (sapChecked ? local.sapCheckedBy : undefined);
+            const sapNotes = remote.sapNotes || local.sapNotes;
+
+            return {
+              ...remote,
+              ...local,
+              albaranPhotoUrl,
+              truckPhotoUrl,
+              unloadPhotoUrl,
+              sapChecked,
+              sapCheckedAt,
+              sapCheckedBy,
+              sapNotes,
+              certified: Boolean(remote.certified || local.certified),
+              certificateId: remote.certificateId || local.certificateId,
+              certificateNumber: remote.certificateNumber || local.certificateNumber,
+            };
+          });
+
+          // Agregar albaranes locales que aún no existan en remote (por si se crearon offline o están en vuelo)
+          const remoteIdSet = new Set(remoteAlbaranes.map((r) => r.id));
+          for (const local of localAlbaranes) {
+            if (!remoteIdSet.has(local.id)) {
+              mergedAlbaranes.push(local);
+            }
+          }
+
+          this.saveAlbaranesLocal(mergedAlbaranes);
+          return mergedAlbaranes;
         }
       } catch (err) {
         console.warn('Notice loading albaranes from Supabase:', err);
@@ -282,15 +338,15 @@ export class RCDService {
     try {
       localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(albaranes));
     } catch (quotaErr) {
-      console.warn('LocalStorage QuotaExceededError while saving albaranes. Pruning base64 photos from older entries:', quotaErr);
-      // Prune base64 photos for older entries (keep full photos for the newest 3) to fit in localStorage limit
-      const pruned = albaranes.map((alb, index) => {
-        if (index > 2) {
+      console.warn('LocalStorage QuotaExceededError while saving albaranes. Compressing/pruning only older certified entries:', quotaErr);
+      // Solo podar fotos si la cuota del navegador (5MB) se satura, y únicamente de viajes antiguos ya certificados
+      const pruned = albaranes.map((alb) => {
+        if (alb.certified) {
           return {
             ...alb,
-            albaranPhotoUrl: alb.albaranPhotoUrl ? (alb.albaranPhotoUrl.length > 500 ? '[Foto Guardada]' : alb.albaranPhotoUrl) : undefined,
-            truckPhotoUrl: alb.truckPhotoUrl ? (alb.truckPhotoUrl.length > 500 ? '[Foto Guardada]' : alb.truckPhotoUrl) : undefined,
-            unloadPhotoUrl: alb.unloadPhotoUrl ? (alb.unloadPhotoUrl.length > 500 ? '[Foto Guardada]' : alb.unloadPhotoUrl) : undefined,
+            albaranPhotoUrl: alb.albaranPhotoUrl && alb.albaranPhotoUrl.length > 5000 ? '' : alb.albaranPhotoUrl,
+            truckPhotoUrl: alb.truckPhotoUrl && alb.truckPhotoUrl.length > 5000 ? '' : alb.truckPhotoUrl,
+            unloadPhotoUrl: alb.unloadPhotoUrl && alb.unloadPhotoUrl.length > 5000 ? '' : alb.unloadPhotoUrl,
           };
         }
         return alb;
@@ -505,6 +561,18 @@ export class RCDService {
     let truckPhotoUrl = updates.truckPhotoUrl !== undefined ? updates.truckPhotoUrl : currentAlbaran.truckPhotoUrl;
     let unloadPhotoUrl = updates.unloadPhotoUrl !== undefined ? updates.unloadPhotoUrl : currentAlbaran.unloadPhotoUrl;
 
+    // Protección de integridad: Si una actualización no trae foto o viene vacía, pero el albarán ya tenía una foto
+    // previa y no se solicitó expresamente su eliminación, conservamos la foto original
+    if (updates.truckPhotoUrl === '' && currentAlbaran.truckPhotoUrl && !(updates as any)._deleteTruckPhoto) {
+      truckPhotoUrl = currentAlbaran.truckPhotoUrl;
+    }
+    if (updates.unloadPhotoUrl === '' && currentAlbaran.unloadPhotoUrl && !(updates as any)._deleteUnloadPhoto) {
+      unloadPhotoUrl = currentAlbaran.unloadPhotoUrl;
+    }
+    if (updates.albaranPhotoUrl === '' && currentAlbaran.albaranPhotoUrl && !(updates as any)._deleteAlbaranPhoto) {
+      albaranPhotoUrl = currentAlbaran.albaranPhotoUrl;
+    }
+
     if (albaranPhotoUrl && albaranPhotoUrl.startsWith('data:image') && albaranPhotoUrl.length > 500_000) {
       try {
         albaranPhotoUrl = await compressImage(albaranPhotoUrl, { maxDimension: 1200, quality: 0.78 });
@@ -636,8 +704,10 @@ export class RCDService {
     this.saveAlbaranesLocal(albaranes);
 
     if (SupabaseService.isConfigured()) {
-      for (const alb of updatedList) {
-        SupabaseService.upsertAlbaran(alb).catch(() => {});
+      try {
+        await Promise.allSettled(updatedList.map((alb) => SupabaseService.upsertAlbaran(alb)));
+      } catch (err) {
+        console.warn('Notice syncing bulk SAP punteo with Supabase:', err);
       }
     }
 
