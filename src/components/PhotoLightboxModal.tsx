@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   X,
   Calendar,
@@ -40,6 +40,13 @@ export const PhotoLightboxModal: React.FC<PhotoLightboxModalProps> = ({
   const [processingType, setProcessingType] = useState<PhotoType | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [zoomedPhoto, setZoomedPhoto] = useState<{ url: string; title: string } | null>(null);
+
+  // Sincronizar estado cuando cambie el albarán seleccionado
+  useEffect(() => {
+    if (initialAlbaran) {
+      setCurrentAlbaran(initialAlbaran);
+    }
+  }, [initialAlbaran]);
 
   // Hidden file inputs for each photo slot
   const albaranInputRef = useRef<HTMLInputElement | null>(null);
@@ -90,11 +97,12 @@ export const PhotoLightboxModal: React.FC<PhotoLightboxModalProps> = ({
         }
       }
 
-      // 3. Guardar en el almacenamiento del sistema
-      const updates: Partial<Albaran> = {};
-      if (photoType === 'albaran') updates.albaranPhotoUrl = finalPhotoUrl;
-      if (photoType === 'truck') updates.truckPhotoUrl = finalPhotoUrl;
-      if (photoType === 'unload') updates.unloadPhotoUrl = finalPhotoUrl;
+      // 3. Guardar en el almacenamiento del sistema PRESERVANDO SIEMPRE las otras fotos existentes
+      const updates: any = {
+        albaranPhotoUrl: photoType === 'albaran' ? finalPhotoUrl : currentAlbaran.albaranPhotoUrl,
+        truckPhotoUrl: photoType === 'truck' ? finalPhotoUrl : currentAlbaran.truckPhotoUrl,
+        unloadPhotoUrl: photoType === 'unload' ? finalPhotoUrl : currentAlbaran.unloadPhotoUrl,
+      };
 
       const updated = await RCDService.updateAlbaranPhotos(currentAlbaran.id, updates);
       setCurrentAlbaran(updated);
@@ -128,10 +136,14 @@ export const PhotoLightboxModal: React.FC<PhotoLightboxModalProps> = ({
 
     setProcessingType(photoType);
     try {
-      const updates: Partial<Albaran> = {};
-      if (photoType === 'albaran') updates.albaranPhotoUrl = '';
-      if (photoType === 'truck') updates.truckPhotoUrl = '';
-      if (photoType === 'unload') updates.unloadPhotoUrl = '';
+      const updates: any = {
+        albaranPhotoUrl: photoType === 'albaran' ? '' : currentAlbaran.albaranPhotoUrl,
+        truckPhotoUrl: photoType === 'truck' ? '' : currentAlbaran.truckPhotoUrl,
+        unloadPhotoUrl: photoType === 'unload' ? '' : currentAlbaran.unloadPhotoUrl,
+        _deleteAlbaranPhoto: photoType === 'albaran',
+        _deleteTruckPhoto: photoType === 'truck',
+        _deleteUnloadPhoto: photoType === 'unload',
+      };
 
       const updated = await RCDService.updateAlbaranPhotos(currentAlbaran.id, updates);
       setCurrentAlbaran(updated);
