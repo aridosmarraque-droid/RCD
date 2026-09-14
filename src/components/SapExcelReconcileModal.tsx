@@ -21,7 +21,9 @@ import {
   Sparkles,
   Info,
   HelpCircle,
-  AlertCircle
+  AlertCircle,
+  SkipForward,
+  EyeOff
 } from 'lucide-react';
 import { Albaran, Client } from '../types/rcd';
 import { RCDService } from '../services/rcdStorage';
@@ -50,8 +52,10 @@ export interface MatchResult {
   excelItem: ExcelRowItem;
   plantAlbaran?: Albaran;
   isMatch: boolean;
-  status: 'matched_pending' | 'matched_already_checked' | 'not_found' | 'discrepancy';
+  status: 'matched_pending' | 'matched_already_checked' | 'not_found' | 'discrepancy' | 'omitted';
   discrepancies: string[];
+  isOmitted?: boolean;
+  omitReason?: string;
 }
 
 export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
@@ -85,7 +89,7 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
   const [statusNotification, setStatusNotification] = useState<string | null>(null);
 
   // Discrepancy list filter
-  const [discrepancyFilter, setDiscrepancyFilter] = useState<'all' | 'not_found' | 'waste_weight'>('all');
+  const [discrepancyFilter, setDiscrepancyFilter] = useState<'all' | 'not_found' | 'omitted'>('all');
 
   // --- Helpers for Normalizing Data ---
   const normalizePlate = (plate?: string) => {
@@ -394,15 +398,19 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
   // --- Metrics ---
   const matchedResults = useMemo(() => matchResults.filter((r) => r.isMatch), [matchResults]);
   const matchedPendingResults = useMemo(
-    () => matchResults.filter((r) => r.isMatch && !r.plantAlbaran?.sapChecked),
+    () => matchResults.filter((r) => r.isMatch && !r.plantAlbaran?.sapChecked && !r.isOmitted),
     [matchResults]
   );
   const matchedCheckedResults = useMemo(
     () => matchResults.filter((r) => r.isMatch && r.plantAlbaran?.sapChecked),
     [matchResults]
   );
+  const omittedResults = useMemo(
+    () => matchResults.filter((r) => r.isOmitted),
+    [matchResults]
+  );
   const discrepancyResults = useMemo(
-    () => matchResults.filter((r) => !r.isMatch || r.discrepancies.length > 0),
+    () => matchResults.filter((r) => !r.isMatch || r.discrepancies.length > 0 || r.isOmitted),
     [matchResults]
   );
   const notFoundResults = useMemo(() => matchResults.filter((r) => !r.isMatch), [matchResults]);
@@ -411,6 +419,44 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
   const currentReviewItem = matchedResults[activeReviewIndex] || matchedResults[0];
 
   // --- Actions ---
+  // Toggle Omit on a delivery note (exclude/include in automatic reconciliation)
+  const handleToggleOmit = (item: MatchResult, customReason?: string) => {
+    const nextOmitted = !item.isOmitted;
+    const num = item.plantAlbaran?.numAlbaran || item.excelItem.numAlbaran || 'sin número';
+
+    setMatchResults((prev) =>
+      prev.map((r) => {
+        const isTarget =
+          (item.plantAlbaran && r.plantAlbaran?.id === item.plantAlbaran.id) ||
+          r.excelItem.rowIndex === item.excelItem.rowIndex;
+
+        if (isTarget) {
+          return {
+            ...r,
+            isOmitted: nextOmitted,
+            omitReason: nextOmitted
+              ? (customReason || 'Omitido manualmente para comprobación o consulta posterior')
+              : undefined,
+          };
+        }
+        return r;
+      })
+    );
+
+    if (nextOmitted) {
+      setStatusNotification(`⚠️ Albarán Nº ${num} omitido del punteo (queda pendiente de revisión).`);
+      setTimeout(() => setStatusNotification(null), 3500);
+
+      // Advance automatically to next item in review
+      if (activeReviewIndex < matchedResults.length - 1) {
+        setActiveReviewIndex((prev) => prev + 1);
+      }
+    } else {
+      setStatusNotification(`✓ Albarán Nº ${num} reincorporado al punteo.`);
+      setTimeout(() => setStatusNotification(null), 3500);
+    }
+  };
+
   // Single Reconcile / Check
   const handleReconcileSingle = async (item: MatchResult) => {
     if (!item.plantAlbaran) return;
@@ -423,11 +469,11 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
         item.plantAlbaran
       );
 
-      // Update in local state
+      // Update in local state and clear omitted flag
       setMatchResults((prev) =>
         prev.map((r) =>
           r.plantAlbaran?.id === item.plantAlbaran?.id
-            ? { ...r, plantAlbaran: updated, status: 'matched_already_checked' }
+            ? { ...r, plantAlbaran: updated, status: 'matched_already_checked', isOmitted: false, omitReason: undefined }
             : r
         )
       );
@@ -453,7 +499,7 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
       .filter((id): id is string => Boolean(id));
 
     if (idsToReconcile.length === 0) {
-      alert('No hay albaranes coincidentes pendientes de reconciliar.');
+      alert('No hay albaranes coincidentes pendientes de reconciliar (los omitidos no se puntean).');
       return;
     }
 
@@ -475,6 +521,7 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
               ...r,
               status: 'matched_already_checked',
               plantAlbaran: { ...r.plantAlbaran, sapChecked: true },
+              isOmitted: false,
             };
           }
           return r;
@@ -517,7 +564,7 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
   // Export Discrepancies to CSV
   const handleExportDiscrepancies = () => {
     if (discrepancyResults.length === 0) {
-      alert('No se registraron discrepancias en el archivo.');
+      alert('No se registraron discrepancias ni albaranes omitidos en el archivo.');
       return;
     }
 
@@ -534,12 +581,16 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
       'Nº Albarán Planta',
       'Residuo Planta',
       'Toneladas Planta',
-      'Detalle de Discrepancia',
+      'Detalle de Discrepancia u Omisión',
     ];
 
     const rows = discrepancyResults.map((r) => [
       r.excelItem.rowIndex,
-      r.status === 'not_found' ? 'NO ENCONTRADO EN PLANTA' : 'DISCREPANCIA RESIDUO/PESO',
+      r.isOmitted
+        ? 'OMITIDO PARA CONSULTA'
+        : r.status === 'not_found'
+        ? 'NO ENCONTRADO EN PLANTA'
+        : 'DISCREPANCIA RESIDUO/PESO',
       `"${(r.excelItem.client || '').replace(/"/g, '""')}"`,
       `"${r.excelItem.date || ''}"`,
       `"${r.excelItem.numAlbaran || ''}"`,
@@ -550,7 +601,7 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
       `"${r.plantAlbaran?.numAlbaran || ''}"`,
       `"${(r.plantAlbaran?.wasteTypeName || '').replace(/"/g, '""')}"`,
       `"${(r.plantAlbaran?.quantityTons || 0).toFixed(2).replace('.', ',')}"`,
-      `"${r.discrepancies.join(' | ').replace(/"/g, '""')}"`,
+      `"${(r.isOmitted ? (r.omitReason || 'Omitido manualmente') : r.discrepancies.join(' | ')).replace(/"/g, '""')}"`,
     ]);
 
     const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\r\n');
@@ -753,7 +804,7 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
           {currentStep === 'reconcile' && (
             <div className="space-y-4 overflow-y-auto py-1 flex-1">
               {/* Summary Metrics Bar */}
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                 <div>
                   <span className="text-slate-500 block text-[10px] uppercase font-bold">Leídos de Excel</span>
                   <span className="text-lg font-black text-white">{matchResults.length} albaranes</span>
@@ -763,7 +814,14 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
                   <span className="text-slate-500 block text-[10px] uppercase font-bold">Coincidentes en Planta</span>
                   <span className="text-lg font-black text-emerald-400">
                     {matchedResults.length}{' '}
-                    <span className="text-xs text-slate-400">({matchedPendingResults.length} pendientes)</span>
+                    <span className="text-xs text-slate-400">({matchedPendingResults.length} listos)</span>
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase font-bold">Omitidos / En Consulta</span>
+                  <span className="text-lg font-black text-amber-400">
+                    {omittedResults.length} albaranes
                   </span>
                 </div>
 
@@ -774,7 +832,7 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
 
                 <div>
                   <span className="text-slate-500 block text-[10px] uppercase font-bold">Incidencias / No Hallados</span>
-                  <span className="text-lg font-black text-rose-400">{discrepancyResults.length} casos</span>
+                  <span className="text-lg font-black text-rose-400">{notFoundResults.length} casos</span>
                 </div>
               </div>
 
@@ -784,7 +842,12 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
                   <div className="flex items-center space-x-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                     <span className="text-emerald-200">
-                      Hay <strong>{matchedPendingResults.length}</strong> albaranes coincidentes listos para puntear en SAP.
+                      Hay <strong>{matchedPendingResults.length}</strong> albaranes coincidentes listos para puntear en SAP
+                      {omittedResults.length > 0 && (
+                        <span className="text-amber-300 font-semibold ml-1">
+                          ({omittedResults.length} {omittedResults.length === 1 ? 'omitido' : 'omitidos'} para consulta)
+                        </span>
+                      )}.
                     </span>
                   </div>
 
@@ -805,7 +868,7 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
                 <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4">
                   {/* Navigator Bar */}
                   <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                       <span className="bg-slate-800 text-white font-mono font-bold text-xs px-2.5 py-1 rounded-lg">
                         {activeReviewIndex + 1} de {matchedResults.length}
                       </span>
@@ -813,6 +876,12 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
                       <strong className="text-emerald-400 font-mono text-sm">
                         {currentReviewItem.plantAlbaran?.numAlbaran || currentReviewItem.excelItem.numAlbaran}
                       </strong>
+                      {currentReviewItem.isOmitted && (
+                        <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded text-[11px] font-bold flex items-center space-x-1">
+                          <EyeOff className="w-3 h-3" />
+                          <span>OMITIDO DEL PUNTEO</span>
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center space-x-1">
@@ -836,6 +905,26 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
                       </button>
                     </div>
                   </div>
+
+                  {/* Warning banner when omitted */}
+                  {currentReviewItem.isOmitted && (
+                    <div className="bg-amber-500/15 border border-amber-500/40 rounded-xl p-3 text-xs text-amber-300 flex items-center justify-between gap-3">
+                      <div className="flex items-center space-x-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>
+                          <strong>Albarán omitido del punteo:</strong> Excluido del punteo automático por necesidad de revisión o consulta. No se reconciliará en lote.
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleOmit(currentReviewItem)}
+                        className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition flex items-center space-x-1 shadow"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Reincorporar</span>
+                      </button>
+                    </div>
+                  )}
 
                   {/* Visual Layout: Photo on Left, Comparative Summary on Right */}
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -984,7 +1073,12 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
                               <td className="py-2 px-3 font-semibold text-slate-400">Estado de Punteo</td>
                               <td className="py-2 px-3 text-slate-400">Albarán en Excel</td>
                               <td className="py-2 px-3">
-                                {currentReviewItem.plantAlbaran?.sapChecked ? (
+                                {currentReviewItem.isOmitted ? (
+                                  <span className="text-amber-400 font-bold flex items-center space-x-1">
+                                    <EyeOff className="w-3.5 h-3.5" />
+                                    <span>⚠️ Omitido para consulta</span>
+                                  </span>
+                                ) : currentReviewItem.plantAlbaran?.sapChecked ? (
                                   <span className="text-emerald-400 font-bold flex items-center space-x-1">
                                     <CheckCircle2 className="w-3.5 h-3.5" />
                                     <span>✓ Punteado en SAP</span>
@@ -1001,7 +1095,7 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
                         </table>
                       </div>
 
-                      {/* Operation Action Buttons (Reconcile or WhatsApp) */}
+                      {/* Operation Action Buttons (WhatsApp, Omitir, Reconcile) */}
                       <div className="pt-2 flex flex-wrap items-center gap-2">
                         {/* 1. Send WhatsApp button in case of discrepancy between photo and waste type */}
                         <button
@@ -1014,7 +1108,30 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
                           <span>Enviar WhatsApp con Foto</span>
                         </button>
 
-                        {/* 2. Reconcile / Check button */}
+                        {/* 2. OMITIR ESTE ALBARÁN */}
+                        {currentReviewItem.isOmitted ? (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleOmit(currentReviewItem)}
+                            className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 font-bold px-3 py-2 rounded-xl text-xs transition flex items-center space-x-1.5 shadow"
+                            title="Reincorporar este albarán al punteo automático"
+                          >
+                            <RotateCcw className="w-4 h-4 text-amber-400" />
+                            <span>Reincorporar al Punteo</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleOmit(currentReviewItem)}
+                            className="bg-slate-800 hover:bg-amber-950/40 text-amber-400 hover:text-amber-300 border border-slate-700 hover:border-amber-500/50 font-bold px-3 py-2 rounded-xl text-xs transition flex items-center space-x-1.5 shadow"
+                            title="Omitir este albarán si no está claro y hay que revisarlo o consultarlo antes de puntear"
+                          >
+                            <SkipForward className="w-4 h-4 text-amber-400" />
+                            <span>Omitir este Albarán</span>
+                          </button>
+                        )}
+
+                        {/* 3. Reconcile / Check button */}
                         <button
                           type="button"
                           onClick={() => handleReconcileSingle(currentReviewItem)}
@@ -1076,6 +1193,17 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
                     </button>
                     <button
                       type="button"
+                      onClick={() => setDiscrepancyFilter('omitted')}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition ${
+                        discrepancyFilter === 'omitted'
+                          ? 'bg-amber-500 text-slate-950 font-black shadow'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Omitidos ({omittedResults.length})
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setDiscrepancyFilter('not_found')}
                       className={`px-2.5 py-1 rounded-lg font-bold transition ${
                         discrepancyFilter === 'not_found'
@@ -1113,7 +1241,7 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
                         <th className="py-2.5 px-3 text-left">Matrícula</th>
                         <th className="py-2.5 px-3 text-left">Residuo (Excel vs Planta)</th>
                         <th className="py-2.5 px-3 text-right">Peso (Excel / Planta)</th>
-                        <th className="py-2.5 px-3 text-left">Detalle Incidencia</th>
+                        <th className="py-2.5 px-3 text-left">Detalle Incidencia u Omisión</th>
                         <th className="py-2.5 px-3 text-center">Acción</th>
                       </tr>
                     </thead>
@@ -1129,21 +1257,35 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
                         </tr>
                       ) : (
                         discrepancyResults
-                          .filter((r) => (discrepancyFilter === 'not_found' ? !r.isMatch : true))
+                          .filter((r) => {
+                            if (discrepancyFilter === 'omitted') return r.isOmitted;
+                            if (discrepancyFilter === 'not_found') return !r.isMatch;
+                            return true;
+                          })
                           .map((r, i) => {
                             const isNotFound = !r.isMatch;
+                            const isOmitted = r.isOmitted;
                             return (
                               <tr
                                 key={i}
                                 className={`transition ${
-                                  isNotFound ? 'bg-rose-950/20 hover:bg-rose-950/30' : 'bg-amber-950/15 hover:bg-amber-950/25'
+                                  isOmitted
+                                    ? 'bg-amber-950/20 hover:bg-amber-950/30'
+                                    : isNotFound
+                                    ? 'bg-rose-950/20 hover:bg-rose-950/30'
+                                    : 'bg-amber-950/15 hover:bg-amber-950/25'
                                 }`}
                               >
                                 <td className="py-2.5 px-3 text-center font-mono text-slate-500">
                                   {r.excelItem.rowIndex}
                                 </td>
                                 <td className="py-2.5 px-3 whitespace-nowrap">
-                                  {isNotFound ? (
+                                  {isOmitted ? (
+                                    <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded text-[10px] font-bold border border-amber-500/40 flex items-center space-x-1 w-fit">
+                                      <EyeOff className="w-2.5 h-2.5" />
+                                      <span>Omitido</span>
+                                    </span>
+                                  ) : isNotFound ? (
                                     <span className="bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded text-[10px] font-bold border border-rose-500/30">
                                       No en planta
                                     </span>
@@ -1181,20 +1323,48 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
                                     </span>
                                   )}
                                 </td>
-                                <td className="py-2.5 px-3 text-slate-400 text-[11px] max-w-[200px]">
-                                  {r.discrepancies.join(' • ')}
+                                <td className="py-2.5 px-3 text-[11px] max-w-[200px]">
+                                  {isOmitted ? (
+                                    <span className="text-amber-300 font-medium block">
+                                      {r.omitReason || 'Omitido manualmente para consulta'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 block">
+                                      {r.discrepancies.join(' • ')}
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="py-2.5 px-3 text-center">
-                                  {r.plantAlbaran && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenWhatsApp(r)}
-                                      className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition"
-                                      title="Enviar WhatsApp con foto de descarga"
-                                    >
-                                      <MessageSquare className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
+                                  <div className="flex items-center justify-center space-x-1">
+                                    {r.plantAlbaran && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenWhatsApp(r)}
+                                        className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition"
+                                        title="Enviar WhatsApp con foto de descarga"
+                                      >
+                                        <MessageSquare className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                    {r.plantAlbaran && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleOmit(r)}
+                                        className={`p-1 rounded-lg border transition ${
+                                          r.isOmitted
+                                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                                            : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-amber-400 hover:border-amber-500/40'
+                                        }`}
+                                        title={r.isOmitted ? 'Reincorporar este albarán al punteo' : 'Omitir este albarán para consulta'}
+                                      >
+                                        {r.isOmitted ? (
+                                          <RotateCcw className="w-3.5 h-3.5" />
+                                        ) : (
+                                          <SkipForward className="w-3.5 h-3.5" />
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             );
