@@ -45,6 +45,59 @@ export class UltramsgService {
     return clean;
   }
 
+  static getWhatsAppWebUrl(toPhone: string, text: string): string {
+    const formatted = this.formatPhoneNumber(toPhone);
+    return `https://wa.me/${formatted}?text=${encodeURIComponent(text)}`;
+  }
+
+  static async sendWhatsAppImage(
+    toPhone: string,
+    imageUrlOrBase64: string,
+    caption?: string
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const { instanceId, token } = this.getConfig();
+
+    if (!instanceId || !token) {
+      console.warn('Ultramsg no está configurado (falta Instance ID o Token).');
+      return { success: false, error: 'Ultramsg no configurado en ajustes' };
+    }
+
+    const formattedTo = this.formatPhoneNumber(toPhone);
+    if (!formattedTo || formattedTo.length < 9) {
+      return { success: false, error: 'Número de teléfono no válido' };
+    }
+
+    try {
+      const url = `https://api.ultramsg.com/${encodeURIComponent(instanceId)}/messages/image`;
+      const params = new URLSearchParams();
+      params.append('token', token);
+      params.append('to', formattedTo);
+      params.append('image', imageUrlOrBase64);
+      if (caption) {
+        params.append('caption', caption);
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+
+      const data = await response.json();
+
+      if (data.sent === 'true' || data.sent === true || data.id) {
+        return { success: true, messageId: data.id || data.message };
+      } else {
+        return { success: false, error: data.error || data.message || JSON.stringify(data) };
+      }
+    } catch (err: any) {
+      console.warn('Notice sending WhatsApp image via Ultramsg:', err);
+      return { success: false, error: err?.message || 'Error de red al conectar con Ultramsg' };
+    }
+  }
+
   static async sendWhatsApp(toPhone: string, bodyText: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
     const { instanceId, token } = this.getConfig();
 
