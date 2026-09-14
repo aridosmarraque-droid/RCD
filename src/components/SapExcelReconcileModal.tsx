@@ -1,5 +1,4 @@
 import React, { useState, useRef, useMemo } from 'react';
-import * as XLSX from 'xlsx';
 import {
   X,
   FileSpreadsheet,
@@ -137,6 +136,81 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
     return isNaN(num) ? 0 : num;
   };
 
+  // Helper: Dynamic loader for XLSX library from CDN if not already loaded in browser window
+  const getXLSXLib = async (): Promise<any> => {
+    if (typeof window !== 'undefined' && (window as any).XLSX) {
+      return (window as any).XLSX;
+    }
+    return new Promise((resolve, reject) => {
+      const existing = document.getElementById('xlsx-cdn-script');
+      if (existing) {
+        if ((window as any).XLSX) {
+          resolve((window as any).XLSX);
+          return;
+        }
+        existing.addEventListener('load', () => resolve((window as any).XLSX));
+        existing.addEventListener('error', () => reject(new Error('Error al cargar la librería Excel.')));
+        return;
+      }
+      const script = document.createElement('script');
+      script.id = 'xlsx-cdn-script';
+      script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      script.async = true;
+      script.onload = () => {
+        if ((window as any).XLSX) {
+          resolve((window as any).XLSX);
+        } else {
+          reject(new Error('No se pudo inicializar la librería XLSX en el navegador.'));
+        }
+      };
+      script.onerror = () => {
+        // Fallback to unpkg CDN
+        const fallback = document.createElement('script');
+        fallback.src = 'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js';
+        fallback.onload = () => resolve((window as any).XLSX);
+        fallback.onerror = () =>
+          reject(
+            new Error(
+              'No se pudo cargar la librería para leer archivos .xlsx. Compruebe la conexión a internet o exporte el informe en formato .csv'
+            )
+          );
+        document.head.appendChild(fallback);
+      };
+      document.head.appendChild(script);
+    });
+  };
+
+  // Helper: Native CSV parser that splits lines and quotes without external dependencies
+  const parseCSVFile = async (file: File): Promise<any[][]> => {
+    const text = await file.text();
+    const lines = text.split(/\r\n|\n|\r/);
+    const rows: any[][] = [];
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      // Detect delimiter (; or , or \t)
+      const delimiter = line.includes(';') ? ';' : line.includes('\t') ? '\t' : ',';
+      const cols: string[] = [];
+      let inQuotes = false;
+      let buffer = '';
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === delimiter && !inQuotes) {
+          cols.push(buffer.trim().replace(/^"|"$/g, ''));
+          buffer = '';
+        } else {
+          buffer += char;
+        }
+      }
+      cols.push(buffer.trim().replace(/^"|"$/g, ''));
+      rows.push(cols);
+    }
+    return rows;
+  };
+
   // --- Excel File Processing ---
   const processExcelFile = async (file: File) => {
     setIsParsing(true);
@@ -144,13 +218,23 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
     setFileName(file.name);
 
     try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
+      let rawRows: any[][] = [];
+      const lowerName = file.name.toLowerCase();
 
-      // Read as raw 2D array of rows
-      const rawRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      if (lowerName.endsWith('.csv')) {
+        // Native parse CSV
+        rawRows = await parseCSVFile(file);
+      } else {
+        // Load XLSX dynamically in the browser
+        const XLSXLib = await getXLSXLib();
+        const data = await file.arrayBuffer();
+        const workbook = XLSXLib.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+
+        // Read as raw 2D array of rows
+        rawRows = XLSXLib.utils.sheet_to_json(worksheet, { header: 1 });
+      }
 
       if (!rawRows || rawRows.length === 0) {
         throw new Error('El archivo Excel está vacío o no contiene filas con datos.');
