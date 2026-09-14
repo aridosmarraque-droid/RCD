@@ -20,10 +20,14 @@ import {
   Square,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  MessageSquare,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Albaran, Client } from '../types/rcd';
 import { RCDService } from '../services/rcdStorage';
+import { SendWhatsAppPhotoModal } from './SendWhatsAppPhotoModal';
+import { SapExcelReconcileModal } from './SapExcelReconcileModal';
 
 interface SapAuditListViewProps {
   albaranes: Albaran[];
@@ -61,6 +65,11 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
   // Notes Modal State
   const [noteEditingAlbaran, setNoteEditingAlbaran] = useState<Albaran | null>(null);
   const [tempNote, setTempNote] = useState('');
+  const [lastPunteoMessage, setLastPunteoMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+
+  // WhatsApp Photo Modal & Excel Reconcile Modal States
+  const [whatsAppModalAlbaran, setWhatsAppModalAlbaran] = useState<Albaran | null>(null);
+  const [isExcelReconcileOpen, setIsExcelReconcileOpen] = useState(false);
 
   // Date Filtering Logic
   const todayStr = new Date().toISOString().split('T')[0];
@@ -68,7 +77,8 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
 
-  const filteredAlbaranes = useMemo(() => {
+  // 1. First filter by search, client and date range (scoped)
+  const scopedAlbaranes = useMemo(() => {
     return albaranes.filter((alb) => {
       // Search filter
       if (searchTerm.trim()) {
@@ -85,10 +95,6 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
 
         if (!matchesQuery) return false;
       }
-
-      // Status filter
-      if (statusFilter === 'pending' && alb.sapChecked) return false;
-      if (statusFilter === 'checked' && !alb.sapChecked) return false;
 
       // Client filter
       if (selectedClientId !== 'all') {
@@ -111,7 +117,25 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
 
       return true;
     });
-  }, [albaranes, searchTerm, statusFilter, selectedClientId, dateRange, startDate, endDate, todayStr, sevenDaysAgo, firstDayOfMonth]);
+  }, [albaranes, searchTerm, selectedClientId, dateRange, startDate, endDate, todayStr, sevenDaysAgo, firstDayOfMonth]);
+
+  // 2. Summary Metrics computed over the scoped albaranes (never biased by statusFilter tab)
+  const totalScopeCount = scopedAlbaranes.length;
+  const checkedCount = useMemo(() => scopedAlbaranes.filter((a) => a.sapChecked).length, [scopedAlbaranes]);
+  const pendingCount = totalScopeCount - checkedCount;
+  const totalScopeTons = useMemo(() => scopedAlbaranes.reduce((sum, a) => sum + (a.quantityTons || 0), 0), [scopedAlbaranes]);
+  const checkedTons = useMemo(() => scopedAlbaranes.filter((a) => a.sapChecked).reduce((sum, a) => sum + (a.quantityTons || 0), 0), [scopedAlbaranes]);
+  const pendingTons = totalScopeTons - checkedTons;
+  const percentChecked = totalScopeCount > 0 ? Math.round((checkedCount / totalScopeCount) * 100) : 100;
+
+  // 3. Filter by Status tab for table display
+  const filteredAlbaranes = useMemo(() => {
+    return scopedAlbaranes.filter((alb) => {
+      if (statusFilter === 'pending') return !alb.sapChecked;
+      if (statusFilter === 'checked') return alb.sapChecked;
+      return true;
+    });
+  }, [scopedAlbaranes, statusFilter]);
 
   // Sorted list
   const sortedAlbaranes = useMemo(() => {
@@ -136,15 +160,6 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
     });
   }, [filteredAlbaranes, sortField, sortDirection]);
 
-  // Summary Metrics
-  const totalCount = filteredAlbaranes.length;
-  const checkedCount = filteredAlbaranes.filter((a) => a.sapChecked).length;
-  const pendingCount = totalCount - checkedCount;
-  const totalTons = filteredAlbaranes.reduce((sum, a) => sum + (a.quantityTons || 0), 0);
-  const checkedTons = filteredAlbaranes.filter((a) => a.sapChecked).reduce((sum, a) => sum + (a.quantityTons || 0), 0);
-  const pendingTons = totalTons - checkedTons;
-  const percentChecked = totalCount > 0 ? Math.round((checkedCount / totalCount) * 100) : 100;
-
   // Sorting Handler
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -157,9 +172,17 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
 
   // Single Toggle SAP Checked
   const handleToggleCheck = async (alb: Albaran) => {
+    const nextState = !alb.sapChecked;
     try {
-      await RCDService.toggleSapChecked(alb.id, !alb.sapChecked, alb.sapNotes, 'Administrador', alb);
+      await RCDService.toggleSapChecked(alb.id, nextState, alb.sapNotes, 'Administrador', alb);
       onRefreshData();
+      setLastPunteoMessage({
+        text: nextState
+          ? `✓ Albarán Nº ${alb.numAlbaran} marcado como PUNTEADO en SAP.`
+          : `Albarán Nº ${alb.numAlbaran} devuelto a estado PENDIENTE.`,
+        type: nextState ? 'success' : 'info',
+      });
+      setTimeout(() => setLastPunteoMessage(null), 4000);
     } catch (err: any) {
       alert(err.message || 'Error al actualizar punteo SAP.');
     }
@@ -169,10 +192,18 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
   const handleBulkSetChecked = async (checked: boolean) => {
     if (selectedIds.length === 0) return;
     setIsProcessing(true);
+    const count = selectedIds.length;
     try {
       await RCDService.bulkSetSapChecked(selectedIds, checked, undefined, 'Administrador', albaranes);
       setSelectedIds([]);
       onRefreshData();
+      setLastPunteoMessage({
+        text: checked
+          ? `✓ Se han marcado ${count} albarán(es) como PUNTEADOS en SAP.`
+          : `Se han desmarcado ${count} albarán(es).`,
+        type: checked ? 'success' : 'info',
+      });
+      setTimeout(() => setLastPunteoMessage(null), 4000);
     } catch (err: any) {
       alert(err.message || 'Error al actualizar viajes en lote.');
     } finally {
@@ -302,8 +333,17 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
             </p>
           </div>
 
-          {/* Action buttons: Export CSV & Print */}
+          {/* Action buttons: Excel Reconcile, Export CSV & Print */}
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setIsExcelReconcileOpen(true)}
+              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-3.5 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition shadow-lg"
+              title="Subir archivo Excel exportado de SAP para cruce y punteo automático con fotos"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-slate-950" />
+              <span>Subir Excel SAP (Punteo Automático)</span>
+            </button>
+
             <button
               onClick={handleExportCSV}
               className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold px-3 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition shadow"
@@ -326,10 +366,10 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
         {/* KPI Cards & Progress Bar */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
           <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
-            <span className="text-[11px] font-semibold text-slate-400 block">Total Viajes Filtrados</span>
+            <span className="text-[11px] font-semibold text-slate-400 block">Total Viajes en Ámbito</span>
             <div className="flex items-baseline space-x-2 mt-1">
-              <span className="text-xl font-black text-white">{totalCount}</span>
-              <span className="text-xs text-slate-400">({totalTons.toFixed(1)} t)</span>
+              <span className="text-xl font-black text-white">{totalScopeCount}</span>
+              <span className="text-xs text-slate-400">({totalScopeTons.toFixed(1)} t)</span>
             </div>
           </div>
 
@@ -396,7 +436,7 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
                   : 'text-amber-400 hover:text-amber-300'
               }`}
             >
-              ⏳ Pendientes ({albaranes.filter((a) => !a.sapChecked).length})
+              ⏳ Pendientes ({pendingCount})
             </button>
             <button
               onClick={() => setStatusFilter('checked')}
@@ -406,7 +446,7 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
                   : 'text-emerald-400 hover:text-emerald-300'
               }`}
             >
-              ✅ Punteados ({albaranes.filter((a) => a.sapChecked).length})
+              ✅ Punteados ({checkedCount})
             </button>
             <button
               onClick={() => setStatusFilter('all')}
@@ -416,7 +456,7 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Todos ({albaranes.length})
+              Todos ({totalScopeCount})
             </button>
           </div>
 
@@ -504,6 +544,28 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Real-Time Punteo Feedback Banner */}
+      {lastPunteoMessage && (
+        <div
+          className={`px-4 py-2.5 rounded-xl border flex items-center justify-between text-xs font-semibold shadow-lg transition-all animate-fadeIn ${
+            lastPunteoMessage.type === 'success'
+              ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+              : 'bg-sky-500/15 border-sky-500/30 text-sky-300'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{lastPunteoMessage.text}</span>
+          </div>
+          <button
+            onClick={() => setLastPunteoMessage(null)}
+            className="text-slate-400 hover:text-white text-[11px] underline ml-3"
+          >
+            Cerrar
+          </button>
+        </div>
+      )}
 
       {/* 3. Main Data Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
@@ -772,6 +834,15 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
                       {/* Notes & Row Actions */}
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center space-x-1.5">
+                          {/* WhatsApp Photo Button */}
+                          <button
+                            onClick={() => setWhatsAppModalAlbaran(alb)}
+                            className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 hover:text-emerald-300 transition shadow-sm"
+                            title="Enviar WhatsApp con fotografía de la descarga y comentario"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                          </button>
+
                           <button
                             onClick={() => handleOpenNoteModal(alb)}
                             className={`p-1.5 rounded-lg border transition ${
@@ -867,6 +938,27 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* WhatsApp Photo Modal */}
+      {whatsAppModalAlbaran && (
+        <SendWhatsAppPhotoModal
+          isOpen={Boolean(whatsAppModalAlbaran)}
+          onClose={() => setWhatsAppModalAlbaran(null)}
+          albaran={whatsAppModalAlbaran}
+          clients={clients}
+        />
+      )}
+
+      {/* SAP Excel Reconciliation Modal */}
+      {isExcelReconcileOpen && (
+        <SapExcelReconcileModal
+          isOpen={isExcelReconcileOpen}
+          onClose={() => setIsExcelReconcileOpen(false)}
+          albaranes={albaranes}
+          clients={clients}
+          onRefreshData={onRefreshData}
+        />
       )}
     </div>
   );
