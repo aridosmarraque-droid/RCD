@@ -841,6 +841,7 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
       <PhotoLightboxModal
         albaran={selectedPhotoAlbaran}
         isAdmin={true}
+        clients={clients}
         onClose={() => setSelectedPhotoAlbaran(null)}
         onAlbaranUpdated={(updated) => {
           setSelectedPhotoAlbaran(updated);
