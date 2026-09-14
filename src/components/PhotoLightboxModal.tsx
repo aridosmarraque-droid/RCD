@@ -12,18 +12,21 @@ import {
   ZoomIn,
   AlertCircle,
   ShieldCheck,
-  Check
+  Check,
+  MessageSquare
 } from 'lucide-react';
-import { Albaran } from '../types/rcd';
+import { Albaran, Client } from '../types/rcd';
 import { RCDService } from '../services/rcdStorage';
 import { compressImage } from '../utils/imageCompressor';
 import { watermarkTruckPhoto } from '../utils/photoWatermark';
+import { SendWhatsAppPhotoModal } from './SendWhatsAppPhotoModal';
 
 interface PhotoLightboxModalProps {
   albaran: Albaran | null;
   onClose: () => void;
   onAlbaranUpdated?: (updated: Albaran) => void;
   isAdmin?: boolean;
+  clients?: Client[];
 }
 
 type PhotoType = 'albaran' | 'truck' | 'unload';
@@ -33,6 +36,7 @@ export const PhotoLightboxModal: React.FC<PhotoLightboxModalProps> = ({
   onClose,
   onAlbaranUpdated,
   isAdmin = true,
+  clients = [],
 }) => {
   if (!initialAlbaran) return null;
 
@@ -40,6 +44,7 @@ export const PhotoLightboxModal: React.FC<PhotoLightboxModalProps> = ({
   const [processingType, setProcessingType] = useState<PhotoType | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [zoomedPhoto, setZoomedPhoto] = useState<{ url: string; title: string } | null>(null);
+  const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
 
   // Sincronizar estado cuando cambie el albarán seleccionado
   useEffect(() => {
@@ -220,13 +225,24 @@ export const PhotoLightboxModal: React.FC<PhotoLightboxModalProps> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition"
-            title="Cerrar visor"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => setIsWhatsAppOpen(true)}
+              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-3 py-1.5 rounded-xl text-xs flex items-center space-x-1.5 transition shadow"
+              title="Enviar fotografía por WhatsApp con comentario al cliente o comercial"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Enviar Foto WhatsApp</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition"
+              title="Cerrar visor"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Status Alert Banner */}
@@ -565,6 +581,16 @@ export const PhotoLightboxModal: React.FC<PhotoLightboxModalProps> = ({
             onClick={(e) => e.stopPropagation()}
           />
         </div>
+      )}
+
+      {/* WhatsApp Modal */}
+      {isWhatsAppOpen && (
+        <SendWhatsAppPhotoModal
+          isOpen={isWhatsAppOpen}
+          onClose={() => setIsWhatsAppOpen(false)}
+          albaran={currentAlbaran}
+          clients={clients}
+        />
       )}
     </div>
   );
