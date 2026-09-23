@@ -46,10 +46,17 @@ export const PhotoLightboxModal: React.FC<PhotoLightboxModalProps> = ({
   const [zoomedPhoto, setZoomedPhoto] = useState<{ url: string; title: string } | null>(null);
   const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
 
-  // Sincronizar estado cuando cambie el albarán seleccionado
+  // Sincronizar estado cuando cambie el albarán seleccionado y cargar fotos bajo demanda si faltan
   useEffect(() => {
     if (initialAlbaran) {
       setCurrentAlbaran(initialAlbaran);
+      if (!initialAlbaran.albaranPhotoUrl && !initialAlbaran.truckPhotoUrl && !initialAlbaran.unloadPhotoUrl) {
+        RCDService.ensureAlbaranPhotos(initialAlbaran).then((withPhotos) => {
+          if (withPhotos) {
+            setCurrentAlbaran({ ...withPhotos });
+          }
+        });
+      }
     }
   }, [initialAlbaran]);
 
