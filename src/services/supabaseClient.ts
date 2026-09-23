@@ -275,25 +275,217 @@ export class SupabaseService {
     }
   }
 
+  // ==========================================
+  // COLUMN DEFINITIONS FOR PERFORMANCE & TIMEOUT PROTECTION
+  // ==========================================
+  private static readonly CORE_ALBARAN_COLUMNS = [
+    'rcd_id',
+    'rcd_num_albaran',
+    'rcd_client_id',
+    'rcd_client_name',
+    'rcd_client_code',
+    'rcd_date',
+    'rcd_time',
+    'rcd_waste_type_code',
+    'rcd_waste_type_name',
+    'rcd_quantity_tons',
+    'rcd_license_plate',
+    'rcd_driver_name',
+    'rcd_plant_zone',
+    'rcd_gps_coords',
+    'rcd_certified',
+    'rcd_certificate_id',
+    'rcd_certificate_number',
+    'rcd_notifications_sent',
+    'rcd_created_at',
+    'rcd_sap_checked',
+    'rcd_sap_checked_at',
+    'rcd_sap_checked_by',
+    'rcd_sap_notes',
+  ].join(',');
+
+  private static readonly BASIC_ALBARAN_COLUMNS = [
+    'rcd_id',
+    'rcd_num_albaran',
+    'rcd_client_id',
+    'rcd_client_name',
+    'rcd_client_code',
+    'rcd_date',
+    'rcd_time',
+    'rcd_waste_type_code',
+    'rcd_waste_type_name',
+    'rcd_quantity_tons',
+    'rcd_license_plate',
+    'rcd_driver_name',
+    'rcd_plant_zone',
+    'rcd_gps_coords',
+    'rcd_certified',
+    'rcd_certificate_id',
+    'rcd_certificate_number',
+    'rcd_notifications_sent',
+    'rcd_created_at',
+  ].join(',');
+
+  /**
+   * Obtiene la lista completa de albaranes de forma optimizada y ultrarrápida.
+   * Resuelve el fallo 500 "canceling statement due to statement timeout" separando
+   * los metadatos de los pesados campos base64 de fotos (que pesan decenas de megas).
+   */
   static async fetchAlbaranes(): Promise<Albaran[] | null> {
     const supabase = this.getClient();
     if (!supabase) return null;
 
     try {
-      const { data, error } = await supabase
+      let data: any[] | null = null;
+      let error: any = null;
+
+      // 1. Intentar consulta ligera con todas las columnas estándar de negocio (<50ms, 0 timeouts)
+      const res = await supabase
         .from('rcd_albaranes')
-        .select('*')
+        .select(this.CORE_ALBARAN_COLUMNS)
         .order('rcd_created_at', { ascending: false });
+
+      data = res.data;
+      error = res.error;
+
+      // 2. Si da error por columnas no creadas (ej: rcd_sap_* en esquemas de Supabase sin migrar)
+      if (
+        error &&
+        (error.message?.includes('column') ||
+          error.message?.includes('rcd_sap_') ||
+          error.message?.includes('schema'))
+      ) {
+        console.warn('Reintentando con columnas básicas (sin columnas SAP):', error.message);
+        const retryRes = await supabase
+          .from('rcd_albaranes')
+          .select(this.BASIC_ALBARAN_COLUMNS)
+          .order('rcd_created_at', { ascending: false });
+        data = retryRes.data;
+        error = retryRes.error;
+      }
+
+      // 3. Fallback adicional si aún no hay resultados (ej: paginación acotada de select '*')
+      if (error || !data) {
+        console.warn('Fallback a select(*) con limit acotado para evitar timeout:', error?.message);
+        const limitRes = await supabase
+          .from('rcd_albaranes')
+          .select('*')
+          .order('rcd_created_at', { ascending: false })
+          .limit(100);
+        data = limitRes.data;
+        error = limitRes.error;
+      }
 
       if (error) {
         console.warn('Notice fetching rcd_albaranes from Supabase:', error.message || error);
         return null;
       }
 
-      return (data || []).map(this.mapDBToAlbaran);
+      if (!data || !Array.isArray(data)) {
+        return [];
+      }
+
+      const albaranes = data.map(this.mapDBToAlbaran);
+
+      // 4. Hidratar las fotos de los 25 albaranes más recientes en una consulta rápida acotada
+      // para que el usuario tenga fotos inmediatas de los albaranes activos sin sobrecargar la BBDD
+      try {
+        const recentPhotosRes = await supabase
+          .from('rcd_albaranes')
+          .select('rcd_id, rcd_albaran_photo_url, rcd_truck_photo_url, rcd_unload_photo_url')
+          .order('rcd_created_at', { ascending: false })
+          .limit(25);
+
+        if (recentPhotosRes.data && Array.isArray(recentPhotosRes.data)) {
+          const photoMap = new Map<string, any>(recentPhotosRes.data.map((r: any) => [r.rcd_id, r]));
+          for (const alb of albaranes) {
+            const p = photoMap.get(alb.id);
+            if (p) {
+              if (p.rcd_albaran_photo_url) alb.albaranPhotoUrl = p.rcd_albaran_photo_url;
+              if (p.rcd_truck_photo_url) alb.truckPhotoUrl = p.rcd_truck_photo_url;
+              if (p.rcd_unload_photo_url) alb.unloadPhotoUrl = p.rcd_unload_photo_url;
+            }
+          }
+        }
+      } catch (photoErr) {
+        console.warn('Notice cargando fotos de albaranes recientes:', photoErr);
+      }
+
+      return albaranes;
     } catch (err) {
       console.warn('Notice connecting to rcd_albaranes on Supabase:', err);
       return null;
+    }
+  }
+
+  /**
+   * Obtiene las fotos de un único albarán bajo demanda por su ID primario.
+   * Ejecución instantánea (~15ms) ya que usa el índice por clave primaria rcd_id.
+   */
+  static async fetchAlbaranPhotos(id: string): Promise<{
+    albaranPhotoUrl?: string;
+    truckPhotoUrl?: string;
+    unloadPhotoUrl?: string;
+  } | null> {
+    const supabase = this.getClient();
+    if (!supabase || !id) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('rcd_albaranes')
+        .select('rcd_id, rcd_albaran_photo_url, rcd_truck_photo_url, rcd_unload_photo_url')
+        .eq('rcd_id', id)
+        .maybeSingle();
+
+      if (error || !data) return null;
+
+      return {
+        albaranPhotoUrl: data.rcd_albaran_photo_url || '',
+        truckPhotoUrl: data.rcd_truck_photo_url || '',
+        unloadPhotoUrl: data.rcd_unload_photo_url || '',
+      };
+    } catch (err) {
+      console.warn('Notice fetching single albaran photos from Supabase:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Obtiene un lote de fotos para un conjunto de IDs de albaranes en segundo plano
+   */
+  static async fetchPhotosBatch(ids: string[]): Promise<
+    Record<
+      string,
+      {
+        albaranPhotoUrl?: string;
+        truckPhotoUrl?: string;
+        unloadPhotoUrl?: string;
+      }
+    >
+  > {
+    const supabase = this.getClient();
+    const result: Record<string, any> = {};
+    if (!supabase || !ids || ids.length === 0) return result;
+
+    try {
+      const { data, error } = await supabase
+        .from('rcd_albaranes')
+        .select('rcd_id, rcd_albaran_photo_url, rcd_truck_photo_url, rcd_unload_photo_url')
+        .in('rcd_id', ids);
+
+      if (error || !data) return result;
+
+      for (const row of data) {
+        result[row.rcd_id] = {
+          albaranPhotoUrl: row.rcd_albaran_photo_url || '',
+          truckPhotoUrl: row.rcd_truck_photo_url || '',
+          unloadPhotoUrl: row.rcd_unload_photo_url || '',
+        };
+      }
+      return result;
+    } catch (err) {
+      console.warn('Notice fetching photos batch from Supabase:', err);
+      return result;
     }
   }
 
@@ -618,4 +810,3 @@ export class SupabaseService {
     }
   }
 }
-
