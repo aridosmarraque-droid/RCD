@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   X,
   FileSpreadsheet,
@@ -417,6 +417,20 @@ export const SapExcelReconcileModal: React.FC<SapExcelReconcileModalProps> = ({
 
   // Current item in review
   const currentReviewItem = matchedResults[activeReviewIndex] || matchedResults[0];
+
+  // Cargar fotos bajo demanda para el albarán en revisión si no las tiene cargadas
+  useEffect(() => {
+    if (currentReviewItem?.plantAlbaran) {
+      const alb = currentReviewItem.plantAlbaran;
+      if (!alb.unloadPhotoUrl && !alb.truckPhotoUrl && !alb.albaranPhotoUrl) {
+        RCDService.ensureAlbaranPhotos(alb).then((updated) => {
+          if (updated && (updated.unloadPhotoUrl || updated.truckPhotoUrl || updated.albaranPhotoUrl)) {
+            setMatchResults((prev) => [...prev]);
+          }
+        });
+      }
+    }
+  }, [currentReviewItem]);
 
   // --- Actions ---
   // Toggle Omit on a delivery note (exclude/include in automatic reconciliation)
