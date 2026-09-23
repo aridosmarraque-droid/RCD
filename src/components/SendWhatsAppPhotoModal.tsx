@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Albaran, Client } from '../types/rcd';
 import { UltramsgService } from '../services/ultramsgService';
+import { RCDService } from '../services/rcdStorage';
 
 interface SendWhatsAppPhotoModalProps {
   isOpen: boolean;
@@ -61,13 +62,24 @@ export const SendWhatsAppPhotoModal: React.FC<SendWhatsAppPhotoModalProps> = ({
     const clientPhone = client?.mobile || '';
     setToPhone(clientPhone);
 
-    // 2. Determine best photo
+    // 2. Determine best photo and ensure photos exist
     if (albaran.unloadPhotoUrl) {
       setSelectedPhotoType('unload');
     } else if (albaran.truckPhotoUrl) {
       setSelectedPhotoType('truck');
-    } else {
+    } else if (albaran.albaranPhotoUrl) {
       setSelectedPhotoType('albaran');
+    } else {
+      // Si no tiene fotos cargadas en memoria, intentar cargarlas bajo demanda
+      RCDService.ensureAlbaranPhotos(albaran).then((updated) => {
+        if (updated.unloadPhotoUrl) {
+          setSelectedPhotoType('unload');
+        } else if (updated.truckPhotoUrl) {
+          setSelectedPhotoType('truck');
+        } else if (updated.albaranPhotoUrl) {
+          setSelectedPhotoType('albaran');
+        }
+      });
     }
 
     // 3. Set default text
