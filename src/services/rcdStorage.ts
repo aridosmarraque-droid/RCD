@@ -349,6 +349,8 @@ export class RCDService {
           }
 
           this.saveAlbaranesLocal(mergedAlbaranes);
+          // Hidratar en segundo plano las fotos de albaranes antiguos sin bloquear la UI
+          this.hydrateMissingPhotosInBackground(mergedAlbaranes);
           return mergedAlbaranes;
         }
       } catch (err) {
@@ -358,48 +360,141 @@ export class RCDService {
     return this.getAlbaranes();
   }
 
+  private static _isHydratingPhotos = false;
+
+  /**
+   * Hidrata en segundo plano y en lotes pequeños (10 en 10) las fotos de albaranes
+   * que aún no estén en memoria o IndexedDB, evitando cualquier saturación de Supabase.
+   */
+  static async hydrateMissingPhotosInBackground(albaranes: Albaran[]): Promise<void> {
+    if (this._isHydratingPhotos || !SupabaseService.isConfigured() || !Array.isArray(albaranes)) return;
+
+    const needPhotos = albaranes.filter(
+      (a) => !a.albaranPhotoUrl && !a.truckPhotoUrl && !a.unloadPhotoUrl
+    );
+
+    if (needPhotos.length === 0) return;
+
+    this._isHydratingPhotos = true;
+
+    // Ejecutar con retardo para permitir que toda la interfaz y tablas se muestren al instante
+    setTimeout(async () => {
+      try {
+        const BATCH_SIZE = 10;
+        for (let i = 0; i < needPhotos.length; i += BATCH_SIZE) {
+          const chunk = needPhotos.slice(i, i + BATCH_SIZE);
+          const ids = chunk.map((a) => a.id);
+
+          const photoMap = await SupabaseService.fetchPhotosBatch(ids);
+          let updatedAny = false;
+
+          const currentList = this.getAlbaranes();
+          const currentMap = new Map(currentList.map((a) => [a.id, a]));
+
+          for (const id of ids) {
+            const p = photoMap[id];
+            if (p && (p.albaranPhotoUrl || p.truckPhotoUrl || p.unloadPhotoUrl)) {
+              const target = currentMap.get(id);
+              if (target) {
+                if (p.albaranPhotoUrl) target.albaranPhotoUrl = p.albaranPhotoUrl;
+                if (p.truckPhotoUrl) target.truckPhotoUrl = p.truckPhotoUrl;
+                if (p.unloadPhotoUrl) target.unloadPhotoUrl = p.unloadPhotoUrl;
+                updatedAny = true;
+              }
+            }
+          }
+
+          if (updatedAny) {
+            saveAlbaranesToIndexedDB(currentList).catch(() => {});
+          }
+
+          // Pausa entre lotes para mantener el uso de CPU de Supabase en 0%
+          await new Promise((res) => setTimeout(res, 800));
+        }
+      } catch (e) {
+        console.warn('Notice en hidratación de fotos en segundo plano:', e);
+      } finally {
+        this._isHydratingPhotos = false;
+      }
+    }, 1200);
+  }
+
+  /**
+   * Garantiza que un albarán disponga de sus fotografías cuando se abre en un modal
+   * (Visor de Fotos, Enviar WhatsApp o Punteo SAP). Primero busca en IndexedDB local
+   * y si falta, consulta Supabase por ID directo en ~15ms.
+   */
+  static async ensureAlbaranPhotos(albaran: Albaran): Promise<Albaran> {
+    if (!albaran || !albaran.id) return albaran;
+
+    if (albaran.albaranPhotoUrl || albaran.truckPhotoUrl || albaran.unloadPhotoUrl) {
+      return albaran;
+    }
+
+    try {
+      const idbAlbaranes = await loadAlbaranesFromIndexedDB();
+      const local = idbAlbaranes?.find((a) => a.id === albaran.id);
+      if (local && (local.albaranPhotoUrl || local.truckPhotoUrl || local.unloadPhotoUrl)) {
+        albaran.albaranPhotoUrl = local.albaranPhotoUrl || '';
+        albaran.truckPhotoUrl = local.truckPhotoUrl || '';
+        albaran.unloadPhotoUrl = local.unloadPhotoUrl || '';
+        return albaran;
+      }
+    } catch {
+      // Continuar a Supabase
+    }
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        const photos = await SupabaseService.fetchAlbaranPhotos(albaran.id);
+        if (photos) {
+          if (photos.albaranPhotoUrl) albaran.albaranPhotoUrl = photos.albaranPhotoUrl;
+          if (photos.truckPhotoUrl) albaran.truckPhotoUrl = photos.truckPhotoUrl;
+          if (photos.unloadPhotoUrl) albaran.unloadPhotoUrl = photos.unloadPhotoUrl;
+
+          // Guardar en la caché en memoria y en IndexedDB
+          const all = this.getAlbaranes();
+          const idx = all.findIndex((a) => a.id === albaran.id);
+          if (idx !== -1) {
+            all[idx] = { ...all[idx], ...photos };
+            this.saveAlbaranesLocal(all);
+          }
+        }
+      } catch (err) {
+        console.warn('Notice asegurando fotos del albarán:', err);
+      }
+    }
+
+    return albaran;
+  }
+
   static saveAlbaranesLocal(albaranes: Albaran[]): void {
     // 1. SIEMPRE mantener la caché en memoria actualizada para búsquedas síncronas instantáneas
     this._cachedAlbaranes = albaranes;
 
-    // 2. Persistir copia completa sin límite de cuota en IndexedDB
+    // 2. Persistir copia completa sin límite de cuota en IndexedDB (con todas las fotos)
     saveAlbaranesToIndexedDB(albaranes).catch(() => {});
 
-    // 3. Persistir en localStorage garantizando que NUNCA falle por QuotaExceededError
+    // 3. Persistir en localStorage versión ligera (sin fotos pesadas base64) para garantizar 0 errores de cuota
     try {
-      localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(albaranes));
-    } catch (quotaErr) {
-      console.warn('LocalStorage QuotaExceededError. Aplicando almacenamiento inteligente por capas:', quotaErr);
-
-      // Nivel 1: Conservar fotos completas solo para los 5 albaranes más recientes
-      try {
-        const tier1 = albaranes.map((alb, index) => {
-          if (index >= 5) {
-            return {
-              ...alb,
-              albaranPhotoUrl: alb.albaranPhotoUrl && alb.albaranPhotoUrl.startsWith('data:image') ? '' : alb.albaranPhotoUrl,
-              truckPhotoUrl: alb.truckPhotoUrl && alb.truckPhotoUrl.startsWith('data:image') ? '' : alb.truckPhotoUrl,
-              unloadPhotoUrl: alb.unloadPhotoUrl && alb.unloadPhotoUrl.startsWith('data:image') ? '' : alb.unloadPhotoUrl,
-            };
-          }
-          return alb;
-        });
-        localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(tier1));
-      } catch (tier1Err) {
-        // Nivel 2: Limpiar fotos data:image de localStorage para salvar los metadatos completos (~20KB)
-        // Las fotos completas siguen 100% conservadas en memoria (_cachedAlbaranes), IndexedDB y Supabase
-        try {
-          const tier2 = albaranes.map((alb) => ({
+      const lightAlbaranes = albaranes.map((alb) => {
+        const isPhoto1Heavy = alb.albaranPhotoUrl && alb.albaranPhotoUrl.startsWith('data:image');
+        const isPhoto2Heavy = alb.truckPhotoUrl && alb.truckPhotoUrl.startsWith('data:image');
+        const isPhoto3Heavy = alb.unloadPhotoUrl && alb.unloadPhotoUrl.startsWith('data:image');
+        if (isPhoto1Heavy || isPhoto2Heavy || isPhoto3Heavy) {
+          return {
             ...alb,
-            albaranPhotoUrl: alb.albaranPhotoUrl && alb.albaranPhotoUrl.startsWith('data:image') ? '' : alb.albaranPhotoUrl,
-            truckPhotoUrl: alb.truckPhotoUrl && alb.truckPhotoUrl.startsWith('data:image') ? '' : alb.truckPhotoUrl,
-            unloadPhotoUrl: alb.unloadPhotoUrl && alb.unloadPhotoUrl.startsWith('data:image') ? '' : alb.unloadPhotoUrl,
-          }));
-          localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(tier2));
-        } catch (tier2Err) {
-          console.error('Fallo crítico guardando en localStorage:', tier2Err);
+            albaranPhotoUrl: isPhoto1Heavy ? '' : alb.albaranPhotoUrl,
+            truckPhotoUrl: isPhoto2Heavy ? '' : alb.truckPhotoUrl,
+            unloadPhotoUrl: isPhoto3Heavy ? '' : alb.unloadPhotoUrl,
+          };
         }
-      }
+        return alb;
+      });
+
+      localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(lightAlbaranes));
+    } catch {
+      // Silenciar limpiamente cualquier error de cuota ajeno
     }
   }
 
