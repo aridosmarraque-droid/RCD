@@ -23,8 +23,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, usersList 
   const [nifCifInput, setNifCifInput] = useState('');
   const [codeInput, setCodeInput] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -36,27 +37,66 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, usersList 
       return;
     }
 
-    // Match against current users (ignoring hyphens and spaces in CIF)
-    const userMatch = usersList.find(
-      (u) =>
-        u.nifCif.replace(/[- ]/g, '').trim().toUpperCase() === cleanNif &&
-        u.code.trim() === cleanCode
-    );
+    setIsAuthenticating(true);
 
-    if (!userMatch) {
-      setErrorMessage('Credenciales incorrectas. Verifique su NIF/CIF y su Código de acceso.');
-      return;
+    try {
+      // 1. Comprobar primero de forma instantánea en memoria y caché local (0 ms)
+      const localUsers = [...(usersList || []), ...RCDService.getUsers()];
+      let userMatch = localUsers.find(
+        (u) =>
+          u.nifCif.replace(/[- ]/g, '').trim().toUpperCase() === cleanNif &&
+          u.code.trim() === cleanCode
+      );
+
+      // 2. Si no se encuentra en local (por ejemplo, si la app se acaba de abrir o el usuario es nuevo),
+      // consultar inmediatamente a Supabase en tiempo real sin hacer esperar al usuario
+      if (!userMatch) {
+        const freshUsers = await RCDService.loadUsersFromRemote();
+        if (freshUsers && freshUsers.length > 0) {
+          userMatch = freshUsers.find(
+            (u) =>
+              u.nifCif.replace(/[- ]/g, '').trim().toUpperCase() === cleanNif &&
+              u.code.trim() === cleanCode
+          );
+        }
+      }
+
+      if (!userMatch) {
+        setErrorMessage('Credenciales incorrectas. Verifique su NIF/CIF y su Código de acceso.');
+        return;
+      }
+
+      // Check user type matching selected tab (allow admin on worker tab)
+      if (authType === 'empresa' && userMatch.userType !== 'empresa') {
+        setErrorMessage('Este usuario es de tipo trabajador. Seleccione la pestaña de Trabajadores.');
+        return;
+      }
+
+      if (authType === 'trabajador' && userMatch.userType === 'empresa') {
+        setErrorMessage('Este usuario es de tipo empresa. Seleccione la pestaña de Empresas.');
+        return;
+      }
+
+      // Save active user session
+      RCDService.setCurrentUser(userMatch);
+      onLoginSuccess(userMatch);
+    } catch (err) {
+      console.warn('Notice during user login check:', err);
+      // Fallback final sobre la lista local
+      const fallbackMatch = RCDService.getUsers().find(
+        (u) =>
+          u.nifCif.replace(/[- ]/g, '').trim().toUpperCase() === cleanNif &&
+          u.code.trim() === cleanCode
+      );
+      if (fallbackMatch) {
+        RCDService.setCurrentUser(fallbackMatch);
+        onLoginSuccess(fallbackMatch);
+      } else {
+        setErrorMessage('Credenciales incorrectas o error de conexión. Inténtelo de nuevo.');
+      }
+    } finally {
+      setIsAuthenticating(false);
     }
-
-    // Check user type matching selected tab (allow admin on worker tab)
-    if (authType === 'empresa' && userMatch.userType !== 'empresa') {
-      setErrorMessage('Este usuario es de tipo trabajador. Seleccione la pestaña de Trabajadores.');
-      return;
-    }
-
-    // Save active user session
-    RCDService.setCurrentUser(userMatch);
-    onLoginSuccess(userMatch);
   };
 
   const handleQuickDemoLogin = (user: RCDUser) => {
@@ -174,14 +214,26 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, usersList 
 
             <button
               type="submit"
+              disabled={isAuthenticating}
               className={`w-full font-extrabold py-3.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-sm transition mt-2 ${
+                isAuthenticating ? 'opacity-80 cursor-wait' : ''
+              } ${
                 authType === 'trabajador'
                   ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
                   : 'bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-sky-500/20'
               }`}
             >
-              <span>Iniciar Sesión en Planta</span>
-              <ArrowRight className="w-4 h-4" />
+              {isAuthenticating ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                  <span>Verificando Acceso...</span>
+                </>
+              ) : (
+                <>
+                  <span>Iniciar Sesión en Planta</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </form>
 
@@ -191,4 +243,3 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, usersList 
     </div>
   );
 };
-
