@@ -11,11 +11,11 @@ import { Client, Albaran, Certificate, RCDUser } from './types/rcd';
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>('operator');
-  const [clients, setClients] = useState<Client[]>([]);
-  const [albaranes, setAlbaranes] = useState<Albaran[]>([]);
-  const [certificates, setCertificates] = useState<Certificate[]>([]);
-  const [users, setUsers] = useState<RCDUser[]>([]);
-  const [currentUser, setCurrentUser] = useState<RCDUser | null>(null);
+  const [clients, setClients] = useState<Client[]>(() => RCDService.getClients());
+  const [albaranes, setAlbaranes] = useState<Albaran[]>(() => RCDService.getAlbaranes());
+  const [certificates, setCertificates] = useState<Certificate[]>(() => RCDService.getCertificates());
+  const [users, setUsers] = useState<RCDUser[]>(() => RCDService.getUsers());
+  const [currentUser, setCurrentUser] = useState<RCDUser | null>(() => RCDService.getCurrentUser());
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isSupabaseConfigured, setIsSupabaseConfigured] = useState<boolean>(false);
@@ -23,20 +23,35 @@ export default function App() {
   const loadData = async () => {
     setIsSupabaseConfigured(SupabaseService.isConfigured());
 
-    const loadedClients = await RCDService.loadClientsFromRemote();
-    const loadedAlbaranes = await RCDService.loadAlbaranesFromRemote();
-    const loadedCertificates = await RCDService.loadCertificatesFromRemote();
-    const loadedUsers = await RCDService.loadUsersFromRemote();
-    await RCDService.loadWasteTypesFromRemote();
+    // 1. Cargar usuarios y clientes primero en paralelo para disponibilidad instantánea de login
+    try {
+      const [loadedUsers, loadedClients] = await Promise.all([
+        RCDService.loadUsersFromRemote(),
+        RCDService.loadClientsFromRemote(),
+      ]);
+      setUsers(loadedUsers);
+      setClients(loadedClients);
 
-    setClients(loadedClients);
-    setAlbaranes(loadedAlbaranes);
-    setCertificates(loadedCertificates);
-    setUsers(loadedUsers);
+      // Re-verificar seguridad si ya hay usuario activo
+      const activeUser = currentUser || RCDService.getCurrentUser();
+      if (activeUser) {
+        applyUserSecurity(activeUser, loadedClients);
+      }
+    } catch (e) {
+      console.warn('Notice loading users/clients:', e);
+    }
 
-    // If a user is already logged in in current React state, re-apply security rules
-    if (currentUser) {
-      applyUserSecurity(currentUser, loadedClients);
+    // 2. Cargar en paralelo el resto de datos operativos sin bloquear la sesión
+    try {
+      const [loadedAlbaranes, loadedCertificates] = await Promise.all([
+        RCDService.loadAlbaranesFromRemote(),
+        RCDService.loadCertificatesFromRemote(),
+        RCDService.loadWasteTypesFromRemote(),
+      ]);
+      setAlbaranes(loadedAlbaranes);
+      setCertificates(loadedCertificates);
+    } catch (e) {
+      console.warn('Notice loading operational data:', e);
     }
   };
 
@@ -62,12 +77,17 @@ export default function App() {
   };
 
   useEffect(() => {
+    const savedUser = RCDService.getCurrentUser();
+    if (savedUser) {
+      applyUserSecurity(savedUser, RCDService.getClients());
+    }
     loadData();
   }, []);
 
   const handleLoginSuccess = (user: RCDUser) => {
     setCurrentUser(user);
-    applyUserSecurity(user, clients);
+    const activeClientsList = clients.length > 0 ? clients : RCDService.getClients();
+    applyUserSecurity(user, activeClientsList);
   };
 
   const handleLogout = () => {
