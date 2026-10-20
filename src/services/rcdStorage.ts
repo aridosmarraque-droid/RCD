@@ -1182,8 +1182,182 @@ export class RCDService {
     );
   }
 
-  // ===============================================
-  // WASTE TYPES MANAGEMENT
+  static async updateCertificate(
+    certId: string,
+    payload: {
+      thirdPartyName: string;
+      thirdPartyCif: string;
+      constructionSiteName: string;
+      constructionSiteAddress?: string;
+      selectedAlbaranIds: string[];
+      issuerName?: string;
+      resetSignatureIfSigned?: boolean;
+    }
+  ): Promise<Certificate> {
+    const certs = this.getCertificates();
+    const certIndex = certs.findIndex((c) => c.id === certId);
+    if (certIndex === -1) {
+      throw new Error('Certificado no encontrado');
+    }
+
+    const currentCert = certs[certIndex];
+    const allAlbaranes = this.getAlbaranes();
+
+    if (!payload.selectedAlbaranIds || payload.selectedAlbaranIds.length === 0) {
+      throw new Error('Debe seleccionar al menos un albarán para incluir en el certificado.');
+    }
+
+    const previousAlbaranIds = currentCert.albaranIds || [];
+    const newSelectedIds = payload.selectedAlbaranIds;
+
+    const removedAlbaranIds = previousAlbaranIds.filter((id) => !newSelectedIds.includes(id));
+    const addedAlbaranIds = newSelectedIds.filter((id) => !previousAlbaranIds.includes(id));
+
+    // Get selected albaran objects
+    const selectedAlbaranes = allAlbaranes.filter((a) => newSelectedIds.includes(a.id));
+    if (selectedAlbaranes.length === 0) {
+      throw new Error('No se han encontrado albaranes válidos para el certificado.');
+    }
+
+    // Recalculate breakdown and total tons
+    const breakdownMap: Record<string, { code: string; name: string; tons: number; count: number }> = {};
+    let totalTons = 0;
+
+    for (const alb of selectedAlbaranes) {
+      totalTons += alb.quantityTons;
+      if (!breakdownMap[alb.wasteTypeCode]) {
+        breakdownMap[alb.wasteTypeCode] = {
+          code: alb.wasteTypeCode,
+          name: alb.wasteTypeName,
+          tons: 0,
+          count: 0,
+        };
+      }
+      breakdownMap[alb.wasteTypeCode].tons += alb.quantityTons;
+      breakdownMap[alb.wasteTypeCode].count += 1;
+    }
+
+    const wasteBreakdown = Object.values(breakdownMap).map((item) => ({
+      wasteTypeCode: item.code,
+      wasteTypeName: item.name,
+      totalTons: Number(item.tons.toFixed(2)),
+      albaranesCount: item.count,
+    }));
+
+    // Update albaranes lock states
+    const updatedAlbaranes = allAlbaranes.map((alb) => {
+      if (removedAlbaranIds.includes(alb.id)) {
+        return {
+          ...alb,
+          certified: false,
+          certificateId: undefined,
+          certificateNumber: undefined,
+        };
+      }
+      if (addedAlbaranIds.includes(alb.id)) {
+        return {
+          ...alb,
+          certified: true,
+          certificateId: currentCert.id,
+          certificateNumber: currentCert.certificateNumber,
+        };
+      }
+      return alb;
+    });
+
+    this.saveAlbaranesLocal(updatedAlbaranes);
+
+    const shouldResetSignature = payload.resetSignatureIfSigned || Boolean(
+      (removedAlbaranIds.length > 0 || addedAlbaranIds.length > 0) && currentCert.signedAt
+    );
+
+    const updatedCert: Certificate = {
+      ...currentCert,
+      thirdPartyName: payload.thirdPartyName.trim(),
+      thirdPartyCif: payload.thirdPartyCif.trim().toUpperCase(),
+      constructionSiteName: payload.constructionSiteName.trim(),
+      constructionSiteAddress: (payload.constructionSiteAddress || '').trim(),
+      issuerName: payload.issuerName?.trim() || currentCert.issuerName,
+      albaranIds: newSelectedIds,
+      wasteBreakdown,
+      totalTons: Number(totalTons.toFixed(2)),
+      ...(shouldResetSignature ? {
+        status: 'Pendiente de Firma',
+        signatureData: undefined,
+        signedAt: undefined,
+        signerName: undefined,
+        signerNif: undefined,
+        fnmtCertIssuer: undefined,
+        fnmtCertSerial: undefined,
+        fnmtHash: undefined,
+        signatureType: undefined,
+        signedPdfData: undefined,
+        signedPdfFileName: undefined,
+      } : {}),
+    };
+
+    certs[certIndex] = updatedCert;
+    this.saveCertificatesLocal(certs);
+
+    // Sync to Supabase
+    if (SupabaseService.isConfigured()) {
+      try {
+        await SupabaseService.insertCertificate(updatedCert);
+
+        if (removedAlbaranIds.length > 0) {
+          await SupabaseService.unlockAlbaranes(removedAlbaranIds);
+        }
+
+        if (addedAlbaranIds.length > 0) {
+          await SupabaseService.updateAlbaranesLockStatus(
+            addedAlbaranIds,
+            updatedCert.id,
+            updatedCert.certificateNumber
+          );
+        }
+      } catch (err) {
+        console.warn('Notice syncing updated certificate with Supabase:', err);
+      }
+    }
+
+    return updatedCert;
+  }
+
+  static async deleteCertificate(certificateId: string): Promise<void> {
+    const certs = this.getCertificates();
+    const cert = certs.find((c) => c.id === certificateId);
+    if (!cert) return;
+
+    // Unlock all albaranes associated with this certificate
+    const allAlbaranes = this.getAlbaranes();
+    const updatedAlbaranes = allAlbaranes.map((alb) => {
+      if ((cert.albaranIds && cert.albaranIds.includes(alb.id)) || alb.certificateId === certificateId) {
+        return {
+          ...alb,
+          certified: false,
+          certificateId: undefined,
+          certificateNumber: undefined,
+        };
+      }
+      return alb;
+    });
+
+    this.saveAlbaranesLocal(updatedAlbaranes);
+
+    const remainingCerts = certs.filter((c) => c.id !== certificateId);
+    this.saveCertificatesLocal(remainingCerts);
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        await SupabaseService.deleteCertificate(certificateId);
+        if (cert.albaranIds && cert.albaranIds.length > 0) {
+          await SupabaseService.unlockAlbaranes(cert.albaranIds);
+        }
+      } catch (err) {
+        console.warn('Notice deleting certificate from Supabase:', err);
+      }
+    }
+  }
   // ===============================================
   static async loadWasteTypesFromRemote(): Promise<WasteType[]> {
     if (SupabaseService.isConfigured()) {
