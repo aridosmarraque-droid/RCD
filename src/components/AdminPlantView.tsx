@@ -30,6 +30,7 @@ import { EditAlbaranModal } from './EditAlbaranModal';
 import { SapAuditListView } from './SapAuditListView';
 import { openPrintableCertificate, openOrDownloadCertificate, downloadSignedPdfFile } from '../utils/certificatePdf';
 import { IssueCertificateModal } from './IssueCertificateModal';
+import { EditCertificateModal } from './EditCertificateModal';
 import { WasteTypesConfigModal } from './WasteTypesConfigModal';
 import { SignCertificateModal } from './SignCertificateModal';
 import { RCDService } from '../services/rcdStorage';
@@ -73,6 +74,7 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
   const [selectedClientForCert, setSelectedClientForCert] = useState<Client | null>(null);
   const [showWasteTypesModal, setShowWasteTypesModal] = useState(false);
   const [selectedCertToSign, setSelectedCertToSign] = useState<Certificate | null>(null);
+  const [selectedCertToEdit, setSelectedCertToEdit] = useState<Certificate | null>(null);
   const [certFilterStatus, setCertFilterStatus] = useState<'all' | 'pending' | 'signed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -724,7 +726,17 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
               .map((cert) => (
                 <div key={cert.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <span className="font-mono font-bold text-sky-400 text-sm">{cert.certificateNumber}</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-mono font-bold text-sky-400 text-sm">{cert.certificateNumber}</span>
+                      <button
+                        onClick={() => setSelectedCertToEdit(cert)}
+                        className="text-[11px] bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 border border-slate-700 px-2 py-0.5 rounded-lg font-bold flex items-center space-x-1 transition"
+                        title="Modificar promotor, obra o albaranes incluidos"
+                      >
+                        <Edit3 className="w-3 h-3 text-amber-400" />
+                        <span>Modificar</span>
+                      </button>
+                    </div>
                     {cert.status === 'Pendiente de Firma' || !cert.signedAt ? (
                       <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold px-2.5 py-1 rounded-full">
                         ⏳ Pendiente de Firma
@@ -773,6 +785,13 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                           <Printer className="w-4 h-4" />
                           <span>Ver Documento para Firma</span>
                         </button>
+                        <button
+                          onClick={() => setSelectedCertToEdit(cert)}
+                          className="w-full sm:col-span-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition"
+                        >
+                          <Edit3 className="w-4 h-4 text-amber-400" />
+                          <span>✏️ Modificar Certificado (Albaranes y Promotor)</span>
+                        </button>
                       </>
                     ) : cert.signedPdfData ? (
                       <>
@@ -789,6 +808,13 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                         >
                           <span>🔄 Sustituir PDF</span>
                         </button>
+                        <button
+                          onClick={() => setSelectedCertToEdit(cert)}
+                          className="w-full sm:col-span-2 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-medium py-1.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Modificar Datos o Albaranes del Certificado</span>
+                        </button>
                       </>
                     ) : (
                       <>
@@ -804,6 +830,13 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                           className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition border border-slate-700"
                         >
                           <span>✍️ Subir PDF Acrobat</span>
+                        </button>
+                        <button
+                          onClick={() => setSelectedCertToEdit(cert)}
+                          className="w-full sm:col-span-2 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-medium py-1.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Modificar Datos o Albaranes del Certificado</span>
                         </button>
                       </>
                     )}
@@ -857,6 +890,26 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
         onSignedSuccess={() => {
           onRefreshData();
           setSelectedCertToSign(null);
+        }}
+        onEditRequested={(cert) => {
+          setSelectedCertToSign(null);
+          setSelectedCertToEdit(cert);
+        }}
+      />
+
+      {/* Edit Certificate Modal */}
+      <EditCertificateModal
+        isOpen={Boolean(selectedCertToEdit)}
+        certificate={selectedCertToEdit}
+        allAlbaranes={albaranes}
+        onClose={() => setSelectedCertToEdit(null)}
+        onCertificateUpdated={() => {
+          setSelectedCertToEdit(null);
+          onRefreshData();
+        }}
+        onCertificateDeleted={() => {
+          setSelectedCertToEdit(null);
+          onRefreshData();
         }}
       />
 
