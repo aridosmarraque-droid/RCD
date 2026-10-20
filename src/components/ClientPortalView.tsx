@@ -15,11 +15,13 @@ import {
   AlertCircle,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Edit3
 } from 'lucide-react';
 import { Albaran, Certificate, Client } from '../types/rcd';
 import { PhotoLightboxModal } from './PhotoLightboxModal';
 import { IssueCertificateModal } from './IssueCertificateModal';
+import { EditCertificateModal } from './EditCertificateModal';
 import { openPrintableCertificate, openOrDownloadCertificate, downloadSignedPdfFile } from '../utils/certificatePdf';
 
 interface ClientPortalViewProps {
@@ -41,6 +43,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const [filterCertified, setFilterCertified] = useState<'all' | 'uncertified' | 'certified'>('all');
   const [selectedPhotoAlbaran, setSelectedPhotoAlbaran] = useState<Albaran | null>(null);
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+  const [selectedCertToEdit, setSelectedCertToEdit] = useState<Certificate | null>(null);
   const [createdCertNotice, setCreatedCertNotice] = useState<string | null>(null);
 
   // Sorting
@@ -348,7 +351,19 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 <div key={cert.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
                   <div className="flex items-start justify-between border-b border-slate-800 pb-3">
                     <div>
-                      <span className="font-mono font-bold text-sky-400 text-sm block">{cert.certificateNumber}</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono font-bold text-sky-400 text-sm block">{cert.certificateNumber}</span>
+                        {(cert.status === 'Pendiente de Firma' || !cert.signedAt) && (
+                          <button
+                            onClick={() => setSelectedCertToEdit(cert)}
+                            className="text-[11px] bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 border border-slate-700 px-2 py-0.5 rounded-lg font-bold flex items-center space-x-1 transition"
+                            title="Modificar datos del promotor, obra o albaranes incluidos"
+                          >
+                            <Edit3 className="w-3 h-3 text-amber-400" />
+                            <span>Modificar</span>
+                          </button>
+                        )}
+                      </div>
                       <span className="text-[11px] text-slate-400">Fecha de Emisión: {cert.issueDate}</span>
                     </div>
                     {cert.status === 'Pendiente de Firma' || !cert.signedAt ? (
@@ -385,7 +400,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                       <div className="bg-amber-950/40 border border-amber-800/60 p-2.5 rounded-xl text-[11px] text-amber-300 flex items-start space-x-2">
                         <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                         <span>
-                          El certificado estará disponible firmado digitalmente en breve. Se ha avisado al responsable para su firma con certificado FNMT.
+                          El certificado estará disponible firmado digitalmente en breve. Si detecta algún error en los datos o en los albaranes, puede modificarlo antes de que sea firmado con el botón "Modificar Certificado".
                         </span>
                       </div>
                     ) : (
@@ -398,8 +413,29 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     )}
                   </div>
 
-                  {/* Print / Download PDF Button */}
-                  {cert.signedPdfData ? (
+                  {/* Print / Download / Edit Actions */}
+                  {cert.status === 'Pendiente de Firma' || !cert.signedAt ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <button
+                        onClick={() =>
+                          openPrintableCertificate(cert, {
+                            isProvisionalPreview: true,
+                          })
+                        }
+                        className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>Ver Borrador Provisional</span>
+                      </button>
+                      <button
+                        onClick={() => setSelectedCertToEdit(cert)}
+                        className="w-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition"
+                      >
+                        <Edit3 className="w-4 h-4 text-amber-400" />
+                        <span>✏️ Modificar Certificado</span>
+                      </button>
+                    </div>
+                  ) : cert.signedPdfData ? (
                     <button
                       onClick={() => downloadSignedPdfFile(cert)}
                       className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition shadow-emerald-900/30"
@@ -411,13 +447,13 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     <button
                       onClick={() =>
                         openPrintableCertificate(cert, {
-                          isProvisionalPreview: cert.status === 'Pendiente de Firma' || !cert.signedAt,
+                          isProvisionalPreview: false,
                         })
                       }
                       className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition"
                     >
                       <Printer className="w-4 h-4" />
-                      <span>{cert.status === 'Pendiente de Firma' || !cert.signedAt ? 'Ver Borrador Provisional' : 'Ver / Imprimir Certificado PDF'}</span>
+                      <span>Ver / Imprimir Certificado PDF</span>
                     </button>
                   )}
                 </div>
@@ -444,6 +480,22 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
             `El certificado ${newCert.certificateNumber} estará disponible con firma digital en breve. Se ha notificado al responsable mediante correo electrónico.`
           );
           setActiveTab('certificates');
+          onRefreshData();
+        }}
+      />
+
+      {/* Edit Certificate Modal */}
+      <EditCertificateModal
+        isOpen={Boolean(selectedCertToEdit)}
+        certificate={selectedCertToEdit}
+        allAlbaranes={albaranes}
+        onClose={() => setSelectedCertToEdit(null)}
+        onCertificateUpdated={() => {
+          setSelectedCertToEdit(null);
+          onRefreshData();
+        }}
+        onCertificateDeleted={() => {
+          setSelectedCertToEdit(null);
           onRefreshData();
         }}
       />
