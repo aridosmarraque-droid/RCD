@@ -26,6 +26,7 @@ interface SignCertificateModalProps {
   onClose: () => void;
   certificate: Certificate | null;
   onSignedSuccess: (updatedCert: Certificate) => void;
+  onEditRequested?: (cert: Certificate) => void;
 }
 
 export const SignCertificateModal: React.FC<SignCertificateModalProps> = ({
@@ -33,6 +34,7 @@ export const SignCertificateModal: React.FC<SignCertificateModalProps> = ({
   onClose,
   certificate,
   onSignedSuccess,
+  onEditRequested,
 }) => {
   const [activeWorkflowTab, setActiveWorkflowTab] = useState<'acrobat_upload' | 'web_stamp'>('acrobat_upload');
 
@@ -392,9 +394,24 @@ export const SignCertificateModal: React.FC<SignCertificateModalProps> = ({
                 <FileBadge className="w-4 h-4 text-emerald-400" />
                 <span className="text-xs font-bold text-emerald-400">{certificate.certificateNumber}</span>
               </div>
-              <span className="text-[11px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2.5 py-0.5 rounded-full font-medium">
-                ⏳ Pendiente de Firma Digital
-              </span>
+              <div className="flex items-center space-x-2">
+                {onEditRequested && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onEditRequested(certificate);
+                    }}
+                    className="text-[11px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-2.5 py-1 rounded-lg font-bold flex items-center space-x-1 transition cursor-pointer"
+                    title="Modificar datos del promotor, obra o albaranes incluidos antes de firmar"
+                  >
+                    <span>✏️ Modificar Certificado</span>
+                  </button>
+                )}
+                <span className="text-[11px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2.5 py-0.5 rounded-full font-medium">
+                  ⏳ Pendiente de Firma Digital
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1">
