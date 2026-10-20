@@ -584,6 +584,28 @@ export class SupabaseService {
     }
   }
 
+  static async unlockAlbaranes(albaranIds: string[]): Promise<void> {
+    const supabase = this.getClient();
+    if (!supabase || !albaranIds || albaranIds.length === 0) return;
+
+    try {
+      const { error } = await supabase
+        .from('rcd_albaranes')
+        .update({
+          rcd_certified: false,
+          rcd_certificate_id: null,
+          rcd_certificate_number: null,
+        })
+        .in('rcd_id', albaranIds);
+
+      if (error) {
+        console.warn('Notice unlocking rcd_albaranes in Supabase:', error.message || error);
+      }
+    } catch (err) {
+      console.warn('Notice unlocking rcd_albaranes in Supabase:', err);
+    }
+  }
+
   static async fetchCertificates(): Promise<Certificate[] | null> {
     const supabase = this.getClient();
     if (!supabase) return null;
@@ -619,6 +641,20 @@ export class SupabaseService {
       }
     } catch (err) {
       console.warn('Notice upserting rcd_certificates into Supabase:', err);
+    }
+  }
+
+  static async deleteCertificate(id: string): Promise<void> {
+    const supabase = this.getClient();
+    if (!supabase) return;
+
+    try {
+      const { error } = await supabase.from('rcd_certificates').delete().eq('rcd_id', id);
+      if (error) {
+        console.warn('Notice deleting rcd_certificates from Supabase:', error.message || error);
+      }
+    } catch (err) {
+      console.warn('Notice deleting rcd_certificates from Supabase:', err);
     }
   }
 
