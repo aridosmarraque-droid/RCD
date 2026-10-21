@@ -46,7 +46,21 @@ export const EditCertificateModal: React.FC<EditCertificateModalProps> = ({
   const [issuerName, setIssuerName] = useState(certificate.issuerName || '');
 
   // Albaranes selection
-  const originalIds = useMemo(() => certificate.albaranIds || [], [certificate]);
+  const originalIds = useMemo(() => {
+    if (!certificate) return [];
+    const certAlbaranIds = certificate.albaranIds || [];
+    const matchedIds = allAlbaranes
+      .filter(
+        (a) =>
+          certAlbaranIds.includes(a.id) ||
+          certAlbaranIds.includes(a.numAlbaran) ||
+          a.certificateId === certificate.id ||
+          a.certificateNumber === certificate.certificateNumber
+      )
+      .map((a) => a.id);
+    return Array.from(new Set([...certAlbaranIds, ...matchedIds]));
+  }, [certificate, allAlbaranes]);
+
   const [selectedIds, setSelectedIds] = useState<string[]>(originalIds);
 
   // Search and filter for albaranes list
@@ -66,11 +80,23 @@ export const EditCertificateModal: React.FC<EditCertificateModalProps> = ({
       setConstructionSiteName(certificate.constructionSiteName || '');
       setConstructionSiteAddress(certificate.constructionSiteAddress || '');
       setIssuerName(certificate.issuerName || '');
-      setSelectedIds(certificate.albaranIds || []);
+
+      const certAlbaranIds = certificate.albaranIds || [];
+      const matched = allAlbaranes
+        .filter(
+          (a) =>
+            certAlbaranIds.includes(a.id) ||
+            certAlbaranIds.includes(a.numAlbaran) ||
+            a.certificateId === certificate.id ||
+            a.certificateNumber === certificate.certificateNumber
+        )
+        .map((a) => a.id);
+
+      setSelectedIds(matched.length > 0 ? Array.from(new Set(matched)) : certAlbaranIds);
       setErrorMsg('');
       setConfirmDelete(false);
     }
-  }, [certificate]);
+  }, [certificate, allAlbaranes]);
 
   // Candidates for this certificate:
   // Albaranes that belong to the SAME client AND (are currently in this cert OR not certified)
@@ -79,12 +105,17 @@ export const EditCertificateModal: React.FC<EditCertificateModalProps> = ({
       // Must belong to the same client
       const belongsToClient =
         alb.clientId === certificate.clientId ||
+        (alb.clientCode && certificate.clientId && alb.clientCode.toLowerCase() === certificate.clientId.toLowerCase()) ||
         alb.clientName.trim().toLowerCase() === certificate.clientName.trim().toLowerCase();
 
       if (!belongsToClient) return false;
 
       // Either already in this certificate, or uncertified, or assigned to this cert ID
-      const isAlreadyInThisCert = originalIds.includes(alb.id) || alb.certificateId === certificate.id;
+      const isAlreadyInThisCert =
+        originalIds.includes(alb.id) ||
+        originalIds.includes(alb.numAlbaran) ||
+        alb.certificateId === certificate.id ||
+        alb.certificateNumber === certificate.certificateNumber;
       const isAvailable = !alb.certified;
 
       return isAlreadyInThisCert || isAvailable;
@@ -94,7 +125,7 @@ export const EditCertificateModal: React.FC<EditCertificateModalProps> = ({
   // Filtered albaranes according to search and tab
   const displayedAlbaranes = useMemo(() => {
     return clientCandidateAlbaranes.filter((alb) => {
-      const isSelected = selectedIds.includes(alb.id);
+      const isSelected = selectedIds.includes(alb.id) || selectedIds.includes(alb.numAlbaran);
 
       if (filterType === 'included' && !isSelected) return false;
       if (filterType === 'available' && isSelected) return false;
@@ -114,7 +145,7 @@ export const EditCertificateModal: React.FC<EditCertificateModalProps> = ({
 
   // Dynamic calculations
   const selectedAlbaranObjects = useMemo(() => {
-    return allAlbaranes.filter((a) => selectedIds.includes(a.id));
+    return allAlbaranes.filter((a) => selectedIds.includes(a.id) || selectedIds.includes(a.numAlbaran));
   }, [allAlbaranes, selectedIds]);
 
   const totalCalculatedTons = useMemo(() => {
@@ -143,11 +174,12 @@ export const EditCertificateModal: React.FC<EditCertificateModalProps> = ({
   const addedCount = selectedIds.filter((id) => !originalIds.includes(id)).length;
   const removedCount = originalIds.filter((id) => !selectedIds.includes(id)).length;
 
-  const toggleAlbaran = (id: string) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter((item) => item !== id));
+  const toggleAlbaran = (alb: Albaran) => {
+    const isSelected = selectedIds.includes(alb.id) || selectedIds.includes(alb.numAlbaran);
+    if (isSelected) {
+      setSelectedIds(selectedIds.filter((item) => item !== alb.id && item !== alb.numAlbaran));
     } else {
-      setSelectedIds([...selectedIds, id]);
+      setSelectedIds([...selectedIds, alb.id]);
     }
   };
 
@@ -442,7 +474,7 @@ export const EditCertificateModal: React.FC<EditCertificateModalProps> = ({
                 >
                   <span>Disponibles para Añadir</span>
                   <span className="bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded-full text-[10px]">
-                    {clientCandidateAlbaranes.filter((a) => !selectedIds.includes(a.id)).length}
+                    {clientCandidateAlbaranes.filter((a) => !selectedIds.includes(a.id) && !selectedIds.includes(a.numAlbaran)).length}
                   </span>
                 </button>
               </div>
@@ -468,15 +500,19 @@ export const EditCertificateModal: React.FC<EditCertificateModalProps> = ({
             ) : (
               <div className="border border-slate-800 rounded-xl overflow-hidden divide-y divide-slate-800 bg-slate-900 max-h-52 overflow-y-auto">
                 {displayedAlbaranes.map((alb) => {
-                  const isChecked = selectedIds.includes(alb.id);
-                  const wasOriginallyInCert = originalIds.includes(alb.id);
+                  const isChecked = selectedIds.includes(alb.id) || selectedIds.includes(alb.numAlbaran);
+                  const wasOriginallyInCert =
+                    originalIds.includes(alb.id) ||
+                    originalIds.includes(alb.numAlbaran) ||
+                    alb.certificateId === certificate.id ||
+                    alb.certificateNumber === certificate.certificateNumber;
                   const isNewlyAdded = isChecked && !wasOriginallyInCert;
                   const isMarkedForRemoval = !isChecked && wasOriginallyInCert;
 
                   return (
                     <div
                       key={alb.id}
-                      onClick={() => toggleAlbaran(alb.id)}
+                      onClick={() => toggleAlbaran(alb)}
                       className={`p-3 flex items-center justify-between cursor-pointer transition select-none ${
                         isChecked
                           ? isNewlyAdded
