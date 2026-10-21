@@ -136,6 +136,7 @@ export class SupabaseService {
       rcd_sap_checked_at: alb.sapCheckedAt || null,
       rcd_sap_checked_by: alb.sapCheckedBy || null,
       rcd_sap_notes: alb.sapNotes || null,
+      rcd_origin: alb.origin || null,
     };
   }
 
@@ -167,6 +168,7 @@ export class SupabaseService {
       sapCheckedAt: row.rcd_sap_checked_at || undefined,
       sapCheckedBy: row.rcd_sap_checked_by || undefined,
       sapNotes: row.rcd_sap_notes || undefined,
+      origin: row.rcd_origin || row.rcd_waste_origin || row.rcd_destination || '',
     };
   }
 
@@ -302,6 +304,7 @@ export class SupabaseService {
     'rcd_sap_checked_at',
     'rcd_sap_checked_by',
     'rcd_sap_notes',
+    'rcd_origin',
   ].join(',');
 
   private static readonly BASIC_ALBARAN_COLUMNS = [
@@ -348,14 +351,15 @@ export class SupabaseService {
       data = res.data;
       error = res.error;
 
-      // 2. Si da error por columnas no creadas (ej: rcd_sap_* en esquemas de Supabase sin migrar)
+      // 2. Si da error por columnas no creadas (ej: rcd_sap_* o rcd_origin en esquemas de Supabase sin migrar)
       if (
         error &&
         (error.message?.includes('column') ||
           error.message?.includes('rcd_sap_') ||
+          error.message?.includes('rcd_origin') ||
           error.message?.includes('schema'))
       ) {
-        console.warn('Reintentando con columnas básicas (sin columnas SAP):', error.message);
+        console.warn('Reintentando con columnas básicas (sin columnas SAP/Origen):', error.message);
         const retryRes = await supabase
           .from('rcd_albaranes')
           .select(this.BASIC_ALBARAN_COLUMNS)
@@ -525,14 +529,15 @@ export class SupabaseService {
       const { error } = await supabase.from('rcd_albaranes').upsert(row, { onConflict: 'rcd_id' });
 
       if (error) {
-        // Fallback if rcd_sap_* columns do not exist in remote Supabase schema
+        // Fallback if rcd_sap_* or rcd_origin columns do not exist in remote Supabase schema
         const errStr = (error.message || '').toLowerCase();
-        if (errStr.includes('rcd_sap_') || errStr.includes('column') || errStr.includes('schema')) {
+        if (errStr.includes('rcd_sap_') || errStr.includes('rcd_origin') || errStr.includes('column') || errStr.includes('schema')) {
           const fallbackRow = { ...row };
           delete (fallbackRow as any).rcd_sap_checked;
           delete (fallbackRow as any).rcd_sap_checked_at;
           delete (fallbackRow as any).rcd_sap_checked_by;
           delete (fallbackRow as any).rcd_sap_notes;
+          delete (fallbackRow as any).rcd_origin;
           await supabase.from('rcd_albaranes').upsert(fallbackRow, { onConflict: 'rcd_id' });
         } else {
           console.warn('Notice upserting rcd_albaranes into Supabase:', error.message || error);
