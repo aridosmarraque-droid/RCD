@@ -48,7 +48,19 @@ export default function App() {
         RCDService.loadCertificatesFromRemote(),
         RCDService.loadWasteTypesFromRemote(),
       ]);
-      setAlbaranes(loadedAlbaranes);
+
+      // Reconciliar automáticamente el estado de certificación de los albaranes
+      // contra los certificados activos (restaura de inmediato albaranes desmarcados a DISPONIBLE)
+      const { albaranes: reconciledAlbs, hasChanges } = RCDService.reconcileAlbaranesWithCertificates(
+        loadedAlbaranes,
+        loadedCertificates
+      );
+
+      if (hasChanges) {
+        RCDService.saveAlbaranesLocal(reconciledAlbs);
+      }
+
+      setAlbaranes(reconciledAlbs);
       setCertificates(loadedCertificates);
     } catch (e) {
       console.warn('Notice loading operational data:', e);
@@ -257,4 +269,3 @@ export default function App() {
     </div>
   );
 }
-
