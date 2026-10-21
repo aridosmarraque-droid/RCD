@@ -91,7 +91,8 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
           alb.wasteTypeCode.toLowerCase().includes(query) ||
           alb.wasteTypeName.toLowerCase().includes(query) ||
           (alb.driverName && alb.driverName.toLowerCase().includes(query)) ||
-          (alb.sapNotes && alb.sapNotes.toLowerCase().includes(query));
+          (alb.sapNotes && alb.sapNotes.toLowerCase().includes(query)) ||
+          (alb.origin && alb.origin.toLowerCase().includes(query));
 
         if (!matchesQuery) return false;
       }
@@ -782,9 +783,14 @@ export const SapAuditListView: React.FC<SapAuditListViewProps> = ({
                         <span className="font-bold text-slate-200 block truncate" title={alb.clientName}>
                           {alb.clientName}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          SAP: {alb.clientCode || 'Sin código'}
-                        </span>
+                        <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 font-mono">
+                          <span>SAP: {alb.clientCode || 'Sin código'}</span>
+                          {alb.origin && (
+                            <span className="text-emerald-400 font-medium truncate max-w-[110px]" title={`Origen del residuo (Datos Destino SAP): ${alb.origin}`}>
+                              📍 {alb.origin}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* License Plate */}
