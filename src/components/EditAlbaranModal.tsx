@@ -50,6 +50,7 @@ export const EditAlbaranModal: React.FC<EditAlbaranModalProps> = ({
   const [time, setTime] = useState(albaran.time || '');
   const [plantZone, setPlantZone] = useState(albaran.plantZone || 'Muelle A - Fosa de Triaje RCD');
   const [driverName, setDriverName] = useState(albaran.driverName || '');
+  const [origin, setOrigin] = useState(albaran.origin || '');
 
   // Gestión de fotos (subir faltantes o sustituir por error con compresión)
   const [albaranPhotoUrl, setAlbaranPhotoUrl] = useState(albaran.albaranPhotoUrl || '');
@@ -149,6 +150,7 @@ export const EditAlbaranModal: React.FC<EditAlbaranModalProps> = ({
         wasteTypeName: wasteTypeName.trim(),
         quantityTons: Number(quantityTons),
         licensePlate: licensePlate.trim().toUpperCase(),
+        origin: origin.trim(),
         date,
         time,
         plantZone,
@@ -298,6 +300,22 @@ export const EditAlbaranModal: React.FC<EditAlbaranModalProps> = ({
                   className="col-span-2 bg-slate-900 text-white font-bold text-xs sm:text-sm border border-slate-700 rounded-xl px-3 py-2 focus:outline-none disabled:opacity-50"
                 />
               </div>
+            </div>
+
+            {/* Origen del Residuo (Datos Destino SAP) */}
+            <div className="sm:col-span-2 space-y-1 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+              <label className="block text-xs font-semibold text-slate-300 flex items-center justify-between">
+                <span>Origen del Residuo (Datos Destino SAP)</span>
+                <span className="text-[10px] text-slate-400 font-normal">Población / Obra / Término</span>
+              </label>
+              <input
+                type="text"
+                disabled={isLocked}
+                value={origin}
+                onChange={(e) => setOrigin(e.target.value)}
+                placeholder="p.ej. PECHINA / ALMERIA / OBRA RESIDENCIAL"
+                className="w-full bg-slate-900 text-white font-medium text-xs sm:text-sm border border-slate-700 rounded-xl px-3 py-2 focus:border-emerald-500 focus:outline-none disabled:opacity-50"
+              />
             </div>
 
             {/* Waste Type */}
