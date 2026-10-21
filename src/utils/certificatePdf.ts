@@ -259,8 +259,8 @@ export function openPrintableCertificate(
               <div class="field-value" style="font-size: 11px;">${alb.plantZone || 'Muelle A - Fosa de Triaje RCD'}</div>
             </div>
             <div>
-              <div class="field-label">Geolocalización GPS Báscula</div>
-              <div class="field-value" style="font-size: 11px; font-family: monospace; color: #475569;">${alb.gpsCoords || '37.3891° N, 5.9845° W [Sincronizado]'}</div>
+              <div class="field-label">Origen del Residuo (Datos Destino SAP)</div>
+              <div class="field-value" style="font-size: 11px; font-weight: bold; color: #065F46;">${alb.origin || 'Planta RCD'}</div>
             </div>
           </div>
         </div>
