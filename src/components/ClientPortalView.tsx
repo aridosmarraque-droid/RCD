@@ -284,7 +284,12 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                         </td>
                         <td className="py-3 px-4">
                           <span className="font-bold text-white block">{alb.wasteTypeCode}</span>
-                          <span className="text-[10px] text-slate-400">{alb.wasteTypeName}</span>
+                          <span className="text-[10px] text-slate-400 block">{alb.wasteTypeName}</span>
+                          {alb.origin && (
+                            <span className="text-[10px] text-emerald-400/90 font-medium block truncate max-w-[170px]" title={`Origen / Destino del residuo: ${alb.origin}`}>
+                              📍 {alb.origin}
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-right font-extrabold text-white text-sm">
                           {alb.quantityTons.toFixed(2)} t
