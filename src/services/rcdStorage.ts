@@ -334,6 +334,7 @@ export class RCDService {
 
             const certificateId = isCertified ? (remote.certificateId || local.certificateId) : undefined;
             const certificateNumber = isCertified ? (remote.certificateNumber || local.certificateNumber) : undefined;
+            const origin = remote.origin !== undefined && remote.origin !== '' ? remote.origin : (local.origin || '');
 
             return {
               ...remote,
@@ -345,6 +346,7 @@ export class RCDService {
               sapCheckedAt,
               sapCheckedBy,
               sapNotes,
+              origin,
               certified: isCertified,
               certificateId,
               certificateNumber,
