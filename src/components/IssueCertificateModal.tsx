@@ -248,6 +248,7 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
                           </div>
                           <div className="text-[10px] text-slate-500">
                             Matrícula: {alb.licensePlate} | Fecha: {alb.date}
+                            {alb.origin && <span className="text-emerald-400 font-medium ml-1.5">• 📍 {alb.origin}</span>}
                           </div>
                         </div>
                       </div>
