@@ -161,7 +161,8 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
       alb.numAlbaran.toLowerCase().includes(searchTerm.toLowerCase()) ||
       alb.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       alb.licensePlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      alb.wasteTypeName.toLowerCase().includes(searchTerm.toLowerCase());
+      alb.wasteTypeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (alb.origin && alb.origin.toLowerCase().includes(searchTerm.toLowerCase()));
 
     if (!matchesSearch) return false;
 
@@ -560,7 +561,15 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
                     sortedAlbaranes.map((alb) => (
                       <tr key={alb.id} className="hover:bg-slate-800/50 transition">
                         <td className="py-3 px-4 font-mono font-bold text-emerald-400">{alb.numAlbaran}</td>
-                        <td className="py-3 px-4 font-bold text-white">{alb.clientName}</td>
+                        <td className="py-3 px-4 font-bold text-white">
+                          <div>{alb.clientName}</div>
+                          {alb.origin && (
+                            <div className="text-[11px] font-normal text-emerald-400/90 flex items-center space-x-1 mt-0.5" title={`Origen del residuo (Datos Destino SAP): ${alb.origin}`}>
+                              <span>📍</span>
+                              <span className="truncate max-w-[190px]">{alb.origin}</span>
+                            </div>
+                          )}
+                        </td>
                         <td className="py-3 px-4 text-slate-300">{alb.date} <span className="text-[10px] text-slate-500">{alb.time}</span></td>
                         <td className="py-3 px-4 font-mono font-bold text-amber-400">{alb.licensePlate}</td>
                         <td className="py-3 px-4">{alb.wasteTypeCode} - {alb.wasteTypeName}</td>
