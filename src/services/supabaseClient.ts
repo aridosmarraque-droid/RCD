@@ -564,21 +564,20 @@ export class SupabaseService {
     certificateNumber: string
   ): Promise<void> {
     const supabase = this.getClient();
-    if (!supabase) return;
+    if (!supabase || !albaranIds || albaranIds.length === 0) return;
 
     try {
-      const { error } = await supabase
-        .from('rcd_albaranes')
-        .update({
-          rcd_certified: true,
-          rcd_certificate_id: certificateId,
-          rcd_certificate_number: certificateNumber,
-        })
-        .in('rcd_id', albaranIds);
+      const payload = {
+        rcd_certified: true,
+        rcd_certificate_id: certificateId,
+        rcd_certificate_number: certificateNumber,
+      };
 
-      if (error) {
-        console.warn('Notice locking rcd_albaranes in Supabase:', error.message || error);
-      }
+      // 1. Bloquear por rcd_id
+      await supabase.from('rcd_albaranes').update(payload).in('rcd_id', albaranIds);
+
+      // 2. Bloquear también por rcd_num_albaran en caso de que se hayan pasado números de albarán
+      await supabase.from('rcd_albaranes').update(payload).in('rcd_num_albaran', albaranIds);
     } catch (err) {
       console.warn('Notice locking rcd_albaranes in Supabase:', err);
     }
@@ -589,20 +588,70 @@ export class SupabaseService {
     if (!supabase || !albaranIds || albaranIds.length === 0) return;
 
     try {
-      const { error } = await supabase
-        .from('rcd_albaranes')
-        .update({
-          rcd_certified: false,
-          rcd_certificate_id: null,
-          rcd_certificate_number: null,
-        })
-        .in('rcd_id', albaranIds);
+      const payload = {
+        rcd_certified: false,
+        rcd_certificate_id: null,
+        rcd_certificate_number: null,
+      };
 
-      if (error) {
-        console.warn('Notice unlocking rcd_albaranes in Supabase:', error.message || error);
+      // 1. Desbloquear por rcd_id
+      const res1 = await supabase.from('rcd_albaranes').update(payload).in('rcd_id', albaranIds);
+
+      // 2. Desbloquear también por rcd_num_albaran (código SAP)
+      const res2 = await supabase.from('rcd_albaranes').update(payload).in('rcd_num_albaran', albaranIds);
+
+      if (res1.error && res2.error) {
+        console.warn('Notice unlocking rcd_albaranes in Supabase:', res1.error.message || res2.error.message);
       }
     } catch (err) {
       console.warn('Notice unlocking rcd_albaranes in Supabase:', err);
+    }
+  }
+
+  static async unlockAlbaranesByCertificateNumber(
+    certificateNumber: string,
+    excludeAlbaranIdsOrNumbers: string[] = []
+  ): Promise<void> {
+    const supabase = this.getClient();
+    if (!supabase || !certificateNumber) return;
+
+    try {
+      // Consultar albaranes actualmente vinculados a este número de certificado
+      const { data, error } = await supabase
+        .from('rcd_albaranes')
+        .select('rcd_id, rcd_num_albaran')
+        .eq('rcd_certificate_number', certificateNumber);
+
+      if (error || !data || data.length === 0) return;
+
+      const toUnlockIds: string[] = [];
+      const toUnlockNumbers: string[] = [];
+
+      for (const row of data) {
+        const isExcluded =
+          excludeAlbaranIdsOrNumbers.includes(row.rcd_id) ||
+          (row.rcd_num_albaran && excludeAlbaranIdsOrNumbers.includes(row.rcd_num_albaran));
+
+        if (!isExcluded) {
+          if (row.rcd_id) toUnlockIds.push(row.rcd_id);
+          if (row.rcd_num_albaran) toUnlockNumbers.push(row.rcd_num_albaran);
+        }
+      }
+
+      const payload = {
+        rcd_certified: false,
+        rcd_certificate_id: null,
+        rcd_certificate_number: null,
+      };
+
+      if (toUnlockIds.length > 0) {
+        await supabase.from('rcd_albaranes').update(payload).in('rcd_id', toUnlockIds);
+      }
+      if (toUnlockNumbers.length > 0) {
+        await supabase.from('rcd_albaranes').update(payload).in('rcd_num_albaran', toUnlockNumbers);
+      }
+    } catch (err) {
+      console.warn('Notice unlocking albaranes by certificate number:', err);
     }
   }
 
