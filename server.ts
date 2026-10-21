@@ -39,7 +39,8 @@ Todos los albaranes siguen una estructura visual estándar idéntica dividida en
    - "Tara camion : 13,600 TONELADAS".
 
 6. BLOQUE "Datos Destino":
-   - Población u obra (ej: "PECHINA", "ALMERIA", "RIOJA").
+   - Población, obra, calle o municipio de destino indicado en el albarán (ej: "PECHINA", "ALMERIA", "RIOJA", "OBRA RESIDENCIAL").
+   - En el contexto de la planta de reciclaje RCD, este dato corresponde al ORIGEN / PROCEDENCIA DEL RESIDUO.
 
 Extrae la información con absoluta fidelidad y devuélvela ÚNICAMENTE en este formato JSON estricto:
 {
@@ -53,7 +54,9 @@ Extrae la información con absoluta fidelidad y devuélvela ÚNICAMENTE en este 
   "licensePlate": "Matrícula completa del vehículo (ej: 1885HGF/R0549BDR)",
   "date": "2026-09-02",
   "time": "HH:MM si figura, o string vacío",
-  "notes": "Transportista o destino si figura (ej: Destino: PECHINA | Transportista: ANGEL ARTES SANCHEZ S.L.)"
+  "origin": "Texto exacto del campo 'Datos Destino' (población, obra o municipio, ej: PECHINA). Se almacena como origen del residuo",
+  "destination": "Mismo texto exacto del campo 'Datos Destino'",
+  "notes": "Transportista o notas adicionales si figuran (ej: Transportista: ANGEL ARTES SANCHEZ S.L.)"
 }`;
 
 async function startServer() {
@@ -81,19 +84,42 @@ async function startServer() {
         },
       });
 
-      // Petición de comprobación rápida
-      await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: 'ping',
-      });
+      // Petición de comprobación rápida con fallback
+      let checkSuccess = false;
+      let checkError: any = null;
 
-      return res.json({
-        configured: true,
-        valid: true,
-        message: 'Clave Gemini API activa y funcionando correctamente.',
-      });
-    } catch (err: any) {
-      const errMsg = err?.message || String(err);
+      for (const m of ['gemini-3.8-flash', 'gemini-flash-latest']) {
+        try {
+          await ai.models.generateContent({
+            model: m,
+            contents: 'ping',
+          });
+          checkSuccess = true;
+          break;
+        } catch (e: any) {
+          checkError = e;
+          const msg = e?.message || String(e);
+          if (
+            msg.includes('leaked') ||
+            msg.includes('PERMISSION_DENIED') ||
+            msg.includes('API_KEY_INVALID') ||
+            msg.includes('403') ||
+            msg.includes('401')
+          ) {
+            break;
+          }
+        }
+      }
+
+      if (checkSuccess) {
+        return res.json({
+          configured: true,
+          valid: true,
+          message: 'Clave Gemini API activa y funcionando correctamente.',
+        });
+      }
+
+      const errMsg = checkError?.message || String(checkError);
       const isLeakedOrRevoked =
         errMsg.includes('leaked') ||
         errMsg.includes('PERMISSION_DENIED') ||
@@ -101,13 +127,29 @@ async function startServer() {
         errMsg.includes('403') ||
         errMsg.includes('401');
 
+      const isSaturated =
+        errMsg.includes('503') ||
+        errMsg.includes('UNAVAILABLE') ||
+        errMsg.includes('high demand') ||
+        errMsg.includes('429') ||
+        errMsg.includes('RESOURCE_EXHAUSTED');
+
       return res.json({
         configured: true,
-        valid: false,
+        valid: !isLeakedOrRevoked,
         isLeakedOrRevoked,
+        isSaturated,
         message: isLeakedOrRevoked
-          ? 'La clave de Gemini API actual está revocada o reportada como filtrada por Google. Cámbiala en Secrets.'
+          ? 'La clave de Gemini API actual está revocada o no autorizada. Cámbiala en Secrets.'
+          : isSaturated
+          ? 'La clave es válida, pero el servicio gratuito de Gemini está saturado en este momento (error 503/429 por alta demanda global de Google).'
           : `Error al verificar la clave: ${errMsg}`,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        configured: true,
+        valid: false,
+        message: `Error interno de servidor: ${err.message || String(err)}`,
       });
     }
   });
@@ -158,61 +200,88 @@ async function startServer() {
         ? imageBase64.split(',')[1]
         : imageBase64;
 
-      // Modelos estándar de Gemini Vision
+      // Modelos estándar de Gemini Vision con reintento automático ante saturación
       const modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest'];
       let lastError: any = null;
       let rawResponseText = '';
 
+      const isTransientSaturation = (msg: string) => {
+        const m = msg.toLowerCase();
+        return (
+          m.includes('overloaded') ||
+          m.includes('unavailable') ||
+          m.includes('resource_exhausted') ||
+          m.includes('429') ||
+          m.includes('503') ||
+          m.includes('timeout') ||
+          m.includes('deadline') ||
+          m.includes('temporarily')
+        );
+      };
+
       for (const modelName of modelsToTry) {
-        try {
-          const generatePromise = ai.models.generateContent({
-            model: modelName,
-            contents: {
-              parts: [
-                {
-                  inlineData: {
-                    data: base64Data,
-                    mimeType: detectedMimeType,
+        // Permitir hasta 2 intentos por modelo si hay saturación temporal
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            const generatePromise = ai.models.generateContent({
+              model: modelName,
+              contents: {
+                parts: [
+                  {
+                    inlineData: {
+                      data: base64Data,
+                      mimeType: detectedMimeType,
+                    },
                   },
-                },
-                { text: ALBARAN_PROMPT },
-              ],
-            },
-            config: {
-              responseMimeType: 'application/json',
-              temperature: 0.1,
-            },
-          });
-
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Timeout de OCR con ${modelName} (15s)`)), 15000)
-          );
-
-          const response = await Promise.race([generatePromise, timeoutPromise]);
-          if (response && response.text) {
-            rawResponseText = response.text;
-            break; // Exito con este modelo
-          }
-        } catch (mErr: any) {
-          const errMsg = mErr?.message || String(mErr);
-          console.warn(`Intento de OCR con ${modelName} no completado:`, errMsg);
-          lastError = mErr;
-
-          // Si el error es de autenticación o API Key revocada/filtrada, fallar rápido sin esperar a probar otros modelos
-          if (
-            errMsg.includes('leaked') ||
-            errMsg.includes('API key') ||
-            errMsg.includes('PERMISSION_DENIED') ||
-            errMsg.includes('API_KEY_INVALID') ||
-            errMsg.includes('403') ||
-            errMsg.includes('401')
-          ) {
-            return res.status(403).json({
-              error: 'AVISA A LA OFICINA: La Clave API de Gemini actual fue reportada como revocada o no válida ("leaked"). Por favor, la oficina debe actualizar la clave GEMINI_API_KEY en Ajustes (Settings > Secrets) de Google AI Studio.',
-              isApiKeyError: true,
-              detail: errMsg,
+                  { text: ALBARAN_PROMPT },
+                ],
+              },
+              config: {
+                responseMimeType: 'application/json',
+                temperature: 0.1,
+              },
             });
+
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`Timeout de OCR con ${modelName} (22s)`)), 22000)
+            );
+
+            const response = await Promise.race([generatePromise, timeoutPromise]);
+            if (response && response.text) {
+              rawResponseText = response.text;
+              break; // Exito con este modelo
+            }
+          } catch (mErr: any) {
+            const errMsg = mErr?.message || String(mErr);
+            console.warn(`Intento ${attempt}/2 de OCR con ${modelName}:`, errMsg);
+            lastError = mErr;
+
+            // Si el error es de autenticación o API Key revocada/filtrada, fallar rápido sin esperar a probar otros modelos
+            if (
+              errMsg.includes('leaked') ||
+              errMsg.includes('API key') ||
+              errMsg.includes('PERMISSION_DENIED') ||
+              errMsg.includes('API_KEY_INVALID') ||
+              errMsg.includes('403') ||
+              errMsg.includes('401')
+            ) {
+              return res.status(403).json({
+                error: 'AVISA A LA OFICINA: La Clave API de Gemini actual fue reportada como revocada o no válida ("leaked"). Por favor, la oficina debe actualizar la clave GEMINI_API_KEY en Ajustes (Settings > Secrets) de Google AI Studio.',
+                isApiKeyError: true,
+                detail: errMsg,
+              });
+            }
+
+            // Si es saturación o sobrecarga temporal y queda intento, esperar antes de reintentar
+            if (attempt === 1 && isTransientSaturation(errMsg)) {
+              await new Promise((res) => setTimeout(res, 1500));
+              continue;
+            }
           }
+        }
+
+        if (rawResponseText) {
+          break; // Salir del bucle de modelos
         }
       }
 
