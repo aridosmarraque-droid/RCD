@@ -51,6 +51,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
   const [timeStr, setTimeStr] = useState(
     new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
   );
+  const [origin, setOrigin] = useState(''); // Origen del residuo (Datos Destino SAP)
   const [scanNotes, setScanNotes] = useState('');
 
   // Step 2: Truck Photo (before unload)
@@ -120,6 +121,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     setClientName('');
     setQuantityTons(0);
     setLicensePlate('');
+    setOrigin('');
     setScanNotes('Optimizando y analizando albarán con IA...');
     setScanWarningMsg(null);
     setMissingFields([]);
@@ -246,6 +248,10 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
           setDateStr(rawDate);
         }
         if (extractedData.time) setTimeStr(extractedData.time);
+
+        if (extractedData.origin || extractedData.destination) {
+          setOrigin((extractedData.origin || extractedData.destination || '').trim());
+        }
 
         if (extractedData.notes) {
           setScanNotes(extractedData.notes);
@@ -474,6 +480,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
         wasteTypeName: wasteTypeName || 'Residuo RCD',
         quantityTons: Number(quantityTons),
         licensePlate: licensePlate.trim().toUpperCase(),
+        origin: origin.trim() || undefined,
         albaranPhotoUrl: albaranPhoto || undefined,
         truckPhotoUrl: truckPhoto || undefined,
         unloadPhotoUrl: unloadPhoto || undefined,
@@ -531,6 +538,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
     setClientName('');
     setQuantityTons(0);
     setLicensePlate('');
+    setOrigin('');
     setTruckPhoto(null);
     setUnloadPhoto(null);
     setScanNotes('');
@@ -687,41 +695,54 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
             )}
 
             {/* OCR Notice / Incomplete recognition or API Key warning banner */}
-            {scanWarningMsg && !isScanning && (
-              scanWarningMsg.toLowerCase().includes('clave api') ||
-              scanWarningMsg.toLowerCase().includes('gemini_api_key') ||
-              scanWarningMsg.toLowerCase().includes('revocada') ||
-              scanWarningMsg.toLowerCase().includes('leaked') ||
-              scanWarningMsg.toLowerCase().includes('avisa a la oficina') ? (
-                <div className="bg-rose-950/70 border-2 border-rose-500 rounded-2xl p-4 my-3 text-rose-200 text-xs flex items-start justify-between gap-3 shadow-2xl animate-fade-in">
-                  <div className="flex items-start space-x-3">
-                    <div className="bg-rose-500/30 p-2.5 rounded-xl border border-rose-500/50 shrink-0 mt-0.5 text-rose-400">
-                      <KeyRound className="w-6 h-6 animate-pulse" />
+            {scanWarningMsg && !isScanning && (() => {
+              const msgLower = scanWarningMsg.toLowerCase();
+              const isApiKeyIssue =
+                msgLower.includes('clave api') ||
+                msgLower.includes('gemini_api_key') ||
+                msgLower.includes('revocada') ||
+                msgLower.includes('leaked') ||
+                msgLower.includes('avisa a la oficina') ||
+                msgLower.includes('api_key_invalid') ||
+                msgLower.includes('unauthenticated') ||
+                msgLower.includes('authentication') ||
+                msgLower.includes('401') ||
+                msgLower.includes('403');
+
+              if (isApiKeyIssue) {
+                return (
+                  <div className="bg-rose-950/70 border-2 border-rose-500 rounded-2xl p-4 my-3 text-rose-200 text-xs flex items-start justify-between gap-3 shadow-2xl animate-fade-in">
+                    <div className="flex items-start space-x-3">
+                      <div className="bg-rose-500/30 p-2.5 rounded-xl border border-rose-500/50 shrink-0 mt-0.5 text-rose-400">
+                        <KeyRound className="w-6 h-6 animate-pulse" />
+                      </div>
+                      <div>
+                        <div className="font-black text-rose-300 tracking-wider text-xs uppercase mb-1 bg-rose-500/20 px-2.5 py-0.5 rounded-md inline-block border border-rose-500/40">
+                          📢 AVISA A LA OFICINA
+                        </div>
+                        <div className="font-extrabold text-white text-sm mb-1">
+                          AVISA A LA OFICINA: Clave Gemini API Deshabilitada o Inválida
+                        </div>
+                        <p className="text-rose-100 text-xs leading-relaxed mb-2 font-medium">
+                          {scanWarningMsg.startsWith('AVISA A LA OFICINA') ? scanWarningMsg : `AVISA A LA OFICINA: ${scanWarningMsg}`}
+                        </p>
+                        <div className="bg-rose-900/40 p-2.5 rounded-xl border border-rose-800/60 text-[11px] text-rose-200">
+                          <strong>Instrucción para Oficina / Administrador:</strong> Si usas Vercel, actualiza <code>GEMINI_API_KEY</code> en <em>Vercel &gt; Settings &gt; Environment Variables</em> y haz un Redeploy. Si estás en Google AI Studio, actualízala en <em>Settings &gt; Secrets</em>. El operario puede rellenar los datos a mano mientras tanto.
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="font-black text-rose-300 tracking-wider text-xs uppercase mb-1 bg-rose-500/20 px-2.5 py-0.5 rounded-md inline-block border border-rose-500/40">
-                        📢 AVISA A LA OFICINA
-                      </div>
-                      <div className="font-extrabold text-white text-sm mb-1">
-                        AVISA A LA OFICINA: Clave Gemini API Deshabilitada o Inválida
-                      </div>
-                      <p className="text-rose-100 text-xs leading-relaxed mb-2 font-medium">
-                        {scanWarningMsg.startsWith('AVISA A LA OFICINA') ? scanWarningMsg : `AVISA A LA OFICINA: ${scanWarningMsg}`}
-                      </p>
-                      <div className="bg-rose-900/40 p-2.5 rounded-xl border border-rose-800/60 text-[11px] text-rose-200">
-                        <strong>Instrucción para Oficina / Administrador:</strong> Entrar en <em>Settings &gt; Secrets</em> de Google AI Studio, seleccionar la clave activa en <code>GEMINI_API_KEY</code> y pulsar <em>Apply changes</em>. El operario puede continuar introduciendo los datos a mano mientras tanto.
-                      </div>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setScanWarningMsg(null)}
+                      className="text-rose-300 hover:text-white p-1 rounded-lg transition shrink-0"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setScanWarningMsg(null)}
-                    className="text-rose-300 hover:text-white p-1 rounded-lg transition shrink-0"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
+                );
+              }
+
+              return (
                 <div className="bg-amber-950/40 border border-amber-500/50 rounded-2xl p-4 my-3 text-amber-200 text-xs flex items-start justify-between gap-3 shadow-lg">
                   <div className="flex items-start space-x-2.5">
                     <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -738,8 +759,8 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-              )
-            )}
+              );
+            })()}
 
             {/* Preview of Albaran Photo */}
             {albaranPhoto && !isScanning && (
@@ -889,6 +910,28 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Origen del Residuo (Datos Destino SAP) */}
+              <div className="sm:col-span-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+                    <span>Origen del Residuo (Datos Destino SAP)</span>
+                    {origin ? (
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 font-semibold">
+                        ✓ Detectado por IA
+                      </span>
+                    ) : null}
+                  </label>
+                  <span className="text-[10px] text-slate-400">Población / Obra / Término</span>
+                </div>
+                <input
+                  type="text"
+                  value={origin}
+                  onChange={(e) => setOrigin(e.target.value)}
+                  placeholder="p.ej. PECHINA / ALMERIA / OBRA RESIDENCIAL"
+                  className="w-full bg-slate-950 text-white font-medium text-xs sm:text-sm border border-slate-800 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none placeholder:text-slate-600"
+                />
               </div>
 
               {/* Tipo de Residuo (LER Code) */}
@@ -1238,6 +1281,12 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
               <span className="text-slate-400">Cantidad Neta:</span>
               <span className="font-extrabold text-white text-sm">{submittedAlbaran.quantityTons.toFixed(2)} Toneladas (t)</span>
             </div>
+            {submittedAlbaran.origin && (
+              <div className="flex justify-between border-b border-slate-800 pb-2">
+                <span className="text-slate-400">Origen (Datos Destino):</span>
+                <span className="font-bold text-emerald-400 text-right">{submittedAlbaran.origin}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-slate-400">Matrícula Camión:</span>
               <span className="font-mono font-bold text-amber-400">{submittedAlbaran.licensePlate}</span>
@@ -1442,6 +1491,13 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                 <span className="text-slate-400 block text-[11px]">Cliente / Transportista:</span>
                 <span className="font-semibold text-white">
                   {clientCode ? `[${clientCode}] ` : ''}{clientName || 'Cliente No Identificado'}
+                </span>
+              </div>
+
+              <div className="border-b border-slate-800/80 pb-2.5">
+                <span className="text-slate-400 block text-[11px]">Origen del Residuo (Datos Destino SAP):</span>
+                <span className="font-bold text-emerald-400">
+                  {origin ? `📍 ${origin}` : 'Sin especificar'}
                 </span>
               </div>
 
