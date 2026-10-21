@@ -56,6 +56,8 @@ export interface Albaran {
   sapCheckedAt?: string; // Fecha y hora de punteo (ISO o YYYY-MM-DD HH:MM)
   sapCheckedBy?: string; // Usuario o Administrador que realizó el punteo
   sapNotes?: string; // Observaciones opcionales del punteo en SAP (ej: "Asiento 4402", "OK")
+  // Origen del Residuo (extraído de 'Datos Destino' en el albarán SAP)
+  origin?: string;
 }
 
 export interface Certificate {
@@ -115,4 +117,6 @@ export interface OCRScanResult {
   licensePlate?: string;
   rawConfidence: number;
   notes?: string;
+  origin?: string;
+  destination?: string;
 }
