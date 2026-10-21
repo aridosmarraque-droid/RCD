@@ -324,6 +324,17 @@ export class RCDService {
             const sapCheckedBy = remote.sapCheckedBy || (sapChecked ? local.sapCheckedBy : undefined);
             const sapNotes = remote.sapNotes || local.sapNotes;
 
+            // 3. Certificación: Si en local se ha desmarcado/desbloqueado (certified: false), respetar el desbloqueo
+            const isCertified =
+              local.certified === false
+                ? false
+                : remote.certified !== undefined
+                ? Boolean(remote.certified)
+                : Boolean(local.certified);
+
+            const certificateId = isCertified ? (remote.certificateId || local.certificateId) : undefined;
+            const certificateNumber = isCertified ? (remote.certificateNumber || local.certificateNumber) : undefined;
+
             return {
               ...remote,
               ...local,
@@ -334,9 +345,9 @@ export class RCDService {
               sapCheckedAt,
               sapCheckedBy,
               sapNotes,
-              certified: Boolean(remote.certified || local.certified),
-              certificateId: remote.certificateId || local.certificateId,
-              certificateNumber: remote.certificateNumber || local.certificateNumber,
+              certified: isCertified,
+              certificateId,
+              certificateNumber,
             };
           });
 
@@ -1210,16 +1221,18 @@ export class RCDService {
     const previousAlbaranIds = currentCert.albaranIds || [];
     const newSelectedIds = payload.selectedAlbaranIds;
 
-    const removedAlbaranIds = previousAlbaranIds.filter((id) => !newSelectedIds.includes(id));
-    const addedAlbaranIds = newSelectedIds.filter((id) => !previousAlbaranIds.includes(id));
-
-    // Get selected albaran objects
-    const selectedAlbaranes = allAlbaranes.filter((a) => newSelectedIds.includes(a.id));
+    // Obtener los albaranes seleccionados (por id o por numAlbaran)
+    const selectedAlbaranes = allAlbaranes.filter(
+      (a) => newSelectedIds.includes(a.id) || newSelectedIds.includes(a.numAlbaran)
+    );
     if (selectedAlbaranes.length === 0) {
       throw new Error('No se han encontrado albaranes válidos para el certificado.');
     }
 
-    // Recalculate breakdown and total tons
+    const removedIdsAndNumbers: string[] = [];
+    const addedIdsAndNumbers: string[] = [];
+
+    // Recalcular desglose de residuos y tonelaje total
     const breakdownMap: Record<string, { code: string; name: string; tons: number; count: number }> = {};
     let totalTons = 0;
 
@@ -1244,9 +1257,19 @@ export class RCDService {
       albaranesCount: item.count,
     }));
 
-    // Update albaranes lock states
+    // Actualizar estado de bloqueo de los albaranes
     const updatedAlbaranes = allAlbaranes.map((alb) => {
-      if (removedAlbaranIds.includes(alb.id)) {
+      const isSelected = newSelectedIds.includes(alb.id) || newSelectedIds.includes(alb.numAlbaran);
+      const wasInCert =
+        previousAlbaranIds.includes(alb.id) ||
+        previousAlbaranIds.includes(alb.numAlbaran) ||
+        alb.certificateId === currentCert.id ||
+        alb.certificateNumber === currentCert.certificateNumber;
+
+      if (!isSelected && wasInCert) {
+        // Albarán quitado: cambiar inmediatamente su estado a DISPONIBLE (no certificado)
+        if (alb.id) removedIdsAndNumbers.push(alb.id);
+        if (alb.numAlbaran) removedIdsAndNumbers.push(alb.numAlbaran);
         return {
           ...alb,
           certified: false,
@@ -1254,7 +1277,12 @@ export class RCDService {
           certificateNumber: undefined,
         };
       }
-      if (addedAlbaranIds.includes(alb.id)) {
+
+      if (isSelected) {
+        if (!wasInCert) {
+          if (alb.id) addedIdsAndNumbers.push(alb.id);
+          if (alb.numAlbaran) addedIdsAndNumbers.push(alb.numAlbaran);
+        }
         return {
           ...alb,
           certified: true,
@@ -1262,13 +1290,15 @@ export class RCDService {
           certificateNumber: currentCert.certificateNumber,
         };
       }
+
       return alb;
     });
 
+    // Guardar inmediatamente en almacenamiento local (IndexedDB + localStorage)
     this.saveAlbaranesLocal(updatedAlbaranes);
 
     const shouldResetSignature = payload.resetSignatureIfSigned || Boolean(
-      (removedAlbaranIds.length > 0 || addedAlbaranIds.length > 0) && currentCert.signedAt
+      (removedIdsAndNumbers.length > 0 || addedIdsAndNumbers.length > 0) && currentCert.signedAt
     );
 
     const updatedCert: Certificate = {
@@ -1278,7 +1308,7 @@ export class RCDService {
       constructionSiteName: payload.constructionSiteName.trim(),
       constructionSiteAddress: (payload.constructionSiteAddress || '').trim(),
       issuerName: payload.issuerName?.trim() || currentCert.issuerName,
-      albaranIds: newSelectedIds,
+      albaranIds: selectedAlbaranes.map((a) => a.id),
       wasteBreakdown,
       totalTons: Number(totalTons.toFixed(2)),
       ...(shouldResetSignature ? {
@@ -1299,18 +1329,31 @@ export class RCDService {
     certs[certIndex] = updatedCert;
     this.saveCertificatesLocal(certs);
 
-    // Sync to Supabase
+    // Sincronizar con Supabase
     if (SupabaseService.isConfigured()) {
       try {
         await SupabaseService.insertCertificate(updatedCert);
 
-        if (removedAlbaranIds.length > 0) {
-          await SupabaseService.unlockAlbaranes(removedAlbaranIds);
+        // 1. Desbloquear los albaranes explícitamente desmarcados (por ID y por número SAP)
+        if (removedIdsAndNumbers.length > 0) {
+          await SupabaseService.unlockAlbaranes(removedIdsAndNumbers);
         }
 
-        if (addedAlbaranIds.length > 0) {
+        // 2. Desbloquear en Supabase cualquier otro albarán que tuviera este número de certificado
+        // pero que ya no figure en la selección actual
+        const validSelectedKeys = [
+          ...newSelectedIds,
+          ...selectedAlbaranes.map((a) => a.numAlbaran),
+        ];
+        await SupabaseService.unlockAlbaranesByCertificateNumber(
+          currentCert.certificateNumber,
+          validSelectedKeys
+        );
+
+        // 3. Bloquear los albaranes nuevos añadidos
+        if (addedIdsAndNumbers.length > 0) {
           await SupabaseService.updateAlbaranesLockStatus(
-            addedAlbaranIds,
+            addedIdsAndNumbers,
             updatedCert.id,
             updatedCert.certificateNumber
           );
@@ -1328,10 +1371,18 @@ export class RCDService {
     const cert = certs.find((c) => c.id === certificateId);
     if (!cert) return;
 
-    // Unlock all albaranes associated with this certificate
+    // Desbloquear todos los albaranes vinculados a este certificado
     const allAlbaranes = this.getAlbaranes();
+    const removedKeys: string[] = [];
     const updatedAlbaranes = allAlbaranes.map((alb) => {
-      if ((cert.albaranIds && cert.albaranIds.includes(alb.id)) || alb.certificateId === certificateId) {
+      const isLinked =
+        (cert.albaranIds && (cert.albaranIds.includes(alb.id) || cert.albaranIds.includes(alb.numAlbaran))) ||
+        alb.certificateId === certificateId ||
+        alb.certificateNumber === cert.certificateNumber;
+
+      if (isLinked) {
+        if (alb.id) removedKeys.push(alb.id);
+        if (alb.numAlbaran) removedKeys.push(alb.numAlbaran);
         return {
           ...alb,
           certified: false,
@@ -1350,13 +1401,76 @@ export class RCDService {
     if (SupabaseService.isConfigured()) {
       try {
         await SupabaseService.deleteCertificate(certificateId);
-        if (cert.albaranIds && cert.albaranIds.length > 0) {
-          await SupabaseService.unlockAlbaranes(cert.albaranIds);
+        if (removedKeys.length > 0) {
+          await SupabaseService.unlockAlbaranes(removedKeys);
         }
+        await SupabaseService.unlockAlbaranesByCertificateNumber(cert.certificateNumber);
       } catch (err) {
         console.warn('Notice deleting certificate from Supabase:', err);
       }
     }
+  }
+
+  /**
+   * Reconcilia automáticamente el estado de certificación de los albaranes
+   * contra la lista real de certificados existentes. Si un albarán aparece marcado
+   * como certificado pero ningún certificado activo lo contiene en sus albaranes,
+   * se restablece de inmediato a estado DISPONIBLE (certified: false).
+   */
+  static reconcileAlbaranesWithCertificates(
+    albaranes: Albaran[],
+    certificates: Certificate[]
+  ): { albaranes: Albaran[]; hasChanges: boolean } {
+    let hasChanges = false;
+
+    // Mapear albarán ID y número SAP hacia su certificado activo correspondiente
+    const certByAlbaran = new Map<string, Certificate>();
+    for (const cert of certificates) {
+      if (Array.isArray(cert.albaranIds)) {
+        for (const idOrNum of cert.albaranIds) {
+          if (idOrNum) {
+            certByAlbaran.set(idOrNum.trim().toLowerCase(), cert);
+          }
+        }
+      }
+    }
+
+    const reconciled = albaranes.map((alb) => {
+      const idKey = (alb.id || '').trim().toLowerCase();
+      const numKey = (alb.numAlbaran || '').trim().toLowerCase();
+      const activeCert = certByAlbaran.get(idKey) || certByAlbaran.get(numKey);
+
+      if (activeCert) {
+        if (
+          !alb.certified ||
+          alb.certificateId !== activeCert.id ||
+          alb.certificateNumber !== activeCert.certificateNumber
+        ) {
+          hasChanges = true;
+          return {
+            ...alb,
+            certified: true,
+            certificateId: activeCert.id,
+            certificateNumber: activeCert.certificateNumber,
+          };
+        }
+        return alb;
+      } else {
+        // No está en ningún certificado activo: debe estar disponible
+        if (alb.certified || alb.certificateId || alb.certificateNumber) {
+          hasChanges = true;
+          return {
+            ...alb,
+            certified: false,
+            certificateId: undefined,
+            certificateNumber: undefined,
+          };
+        }
+        return alb;
+      }
+    });
+
+    return { albaranes: reconciled, hasChanges };
   }
   // ===============================================
   static async loadWasteTypesFromRemote(): Promise<WasteType[]> {
