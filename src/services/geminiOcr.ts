@@ -36,7 +36,8 @@ Todos los albaranes siguen una estructura visual estándar idéntica dividida en
    - "Tara camion : 13,600 TONELADAS".
 
 6. BLOQUE "Datos Destino":
-   - Población u obra (ej: "PECHINA", "ALMERIA", "RIOJA").
+   - Población, obra, calle o municipio de destino indicado en el albarán (ej: "PECHINA", "ALMERIA", "RIOJA", "OBRA RESIDENCIAL").
+   - En el contexto de la planta de reciclaje RCD, este dato corresponde al ORIGEN / PROCEDENCIA DEL RESIDUO.
 
 Extrae la información con absoluta fidelidad y devuélvela ÚNICAMENTE en este formato JSON estricto:
 {
@@ -50,7 +51,9 @@ Extrae la información con absoluta fidelidad y devuélvela ÚNICAMENTE en este 
   "licensePlate": "Matrícula completa del vehículo (ej: 1885HGF/R0549BDR)",
   "date": "2026-09-02",
   "time": "HH:MM si figura, o string vacío",
-  "notes": "Transportista o destino si figura (ej: Destino: PECHINA | Transportista: ANGEL ARTES SANCHEZ S.L.)"
+  "origin": "Texto exacto del campo 'Datos Destino' (población, obra o municipio, ej: PECHINA). Se almacena como origen del residuo",
+  "destination": "Mismo texto exacto del campo 'Datos Destino'",
+  "notes": "Transportista o notas adicionales si figuran (ej: Transportista: ANGEL ARTES SANCHEZ S.L.)"
 }`;
 
 /**
@@ -154,6 +157,17 @@ export function cleanExtractedOCRData(raw: any): Partial<OCRScanResult> {
     result.licensePlate = String(result.licensePlate).toUpperCase().replace(/\s*[\/\-]\s*/g, '/').trim();
   }
 
+  // 6. Origen del residuo / Datos Destino SAP
+  let origin = (result.origin || result.destination || '').trim();
+  if (!origin && result.notes) {
+    const destMatch = String(result.notes).match(/(?:Destino|Origen)\s*:\s*([^|;\n\r]+)/i);
+    if (destMatch) {
+      origin = destMatch[1].trim();
+    }
+  }
+  result.origin = origin;
+  result.destination = origin;
+
   return result;
 }
 
@@ -197,8 +211,8 @@ async function resizeImageForOCR(dataUrl: string, maxDim = 1800): Promise<string
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, width, height);
-      // Encode as JPEG at 0.90 quality for crisp OCR legibility
-      const resized = canvas.toDataURL('image/jpeg', 0.90);
+      // Encode as JPEG at 0.85 quality for fast transfer and crisp OCR legibility
+      const resized = canvas.toDataURL('image/jpeg', 0.85);
       resolve(resized);
     };
     img.onerror = () => resolve(dataUrl);
@@ -217,10 +231,10 @@ export async function scanAlbaranWithGemini(
 ): Promise<Partial<OCRScanResult> | null> {
   let serverErrorMsg = '';
 
-  // 0. Pre-compress image to max 1800px (quality 0.90) to ensure high OCR precision
+  // 0. Pre-compress image to max 1500px (quality 0.85) to ensure high OCR precision and fast upload
   let preparedBase64 = imageBase64;
   try {
-    preparedBase64 = await resizeImageForOCR(imageBase64, 1800);
+    preparedBase64 = await resizeImageForOCR(imageBase64, 1500);
   } catch (e) {
     console.warn('Image resize warning:', e);
   }
@@ -236,7 +250,7 @@ export async function scanAlbaranWithGemini(
   // 1. Call server-side API endpoint (/api/scan-albaran)
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
 
     // Link external signal if provided
     if (externalSignal) {
