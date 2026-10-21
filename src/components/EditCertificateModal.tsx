@@ -558,6 +558,7 @@ export const EditCertificateModal: React.FC<EditCertificateModalProps> = ({
                           </div>
                           <div className="text-[10px] text-slate-500">
                             Fecha: {alb.date} {alb.time ? `• ${alb.time}` : ''} | Matrícula: {alb.licensePlate || 'N/A'}
+                            {alb.origin && <span className="text-emerald-400 font-medium ml-1.5">• 📍 {alb.origin}</span>}
                           </div>
                         </div>
                       </div>
