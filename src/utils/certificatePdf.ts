@@ -10,17 +10,19 @@ export interface PrintableCertificateOptions {
 /**
  * Downloads the authentic Adobe Acrobat / AutoFirma signed PDF file
  */
-export function downloadSignedPdfFile(certificate: Certificate): void {
-  if (!certificate.signedPdfData) {
-    openPrintableCertificate(certificate, { forSignature: false });
+export async function downloadSignedPdfFile(certificate: Certificate): Promise<void> {
+  const fullCert = await RCDService.ensureCertificatePdf(certificate);
+
+  if (!fullCert.signedPdfData) {
+    openPrintableCertificate(fullCert, { forSignature: false });
     return;
   }
 
-  const fileName = certificate.signedPdfFileName || `${certificate.certificateNumber}_Firmado_FNMT.pdf`;
+  const fileName = fullCert.signedPdfFileName || `${fullCert.certificateNumber}_Firmado_FNMT.pdf`;
 
   try {
-    if (certificate.signedPdfData.startsWith('data:application/pdf') || certificate.signedPdfData.startsWith('data:;base64')) {
-      const base64Parts = certificate.signedPdfData.split(',');
+    if (fullCert.signedPdfData.startsWith('data:application/pdf') || fullCert.signedPdfData.startsWith('data:;base64')) {
+      const base64Parts = fullCert.signedPdfData.split(',');
       const base64Data = base64Parts[1] || base64Parts[0];
       const byteCharacters = atob(base64Data);
       const byteNumbers = new Array(byteCharacters.length);
@@ -39,20 +41,20 @@ export function downloadSignedPdfFile(certificate: Certificate): void {
       document.body.removeChild(link);
 
       setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-    } else if (certificate.signedPdfData.startsWith('http') || certificate.signedPdfData.startsWith('/')) {
+    } else if (fullCert.signedPdfData.startsWith('http') || fullCert.signedPdfData.startsWith('/')) {
       const link = document.createElement('a');
-      link.href = certificate.signedPdfData;
+      link.href = fullCert.signedPdfData;
       link.download = fileName;
       link.target = '_blank';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     } else {
-      openPrintableCertificate(certificate, { forSignature: false });
+      openPrintableCertificate(fullCert, { forSignature: false });
     }
   } catch (err) {
     console.error('Error downloading signed PDF:', err);
-    openPrintableCertificate(certificate, { forSignature: false });
+    openPrintableCertificate(fullCert, { forSignature: false });
   }
 }
 
@@ -61,11 +63,12 @@ export function downloadSignedPdfFile(certificate: Certificate): void {
  * If a real Acrobat-signed PDF exists, downloads it directly.
  * Otherwise, opens the printable official certificate view.
  */
-export function openOrDownloadCertificate(certificate: Certificate, options?: PrintableCertificateOptions): void {
-  if (certificate.signedPdfData) {
-    downloadSignedPdfFile(certificate);
+export async function openOrDownloadCertificate(certificate: Certificate, options?: PrintableCertificateOptions): Promise<void> {
+  const fullCert = await RCDService.ensureCertificatePdf(certificate);
+  if (fullCert.signedPdfData) {
+    await downloadSignedPdfFile(fullCert);
   } else {
-    openPrintableCertificate(certificate, options);
+    openPrintableCertificate(fullCert, options);
   }
 }
 
