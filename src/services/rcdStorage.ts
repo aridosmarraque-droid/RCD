@@ -3,7 +3,12 @@ import { SupabaseService } from './supabaseClient';
 import { UltramsgService } from './ultramsgService';
 import { EmailService } from './emailService';
 import { compressImage } from '../utils/imageCompressor';
-import { saveAlbaranesToIndexedDB, loadAlbaranesFromIndexedDB } from './rcdIndexedDB';
+import {
+  saveAlbaranesToIndexedDB,
+  loadAlbaranesFromIndexedDB,
+  saveCertificatesToIndexedDB,
+  loadCertificatesFromIndexedDB,
+} from './rcdIndexedDB';
 
 export const OFFICIAL_WASTE_TYPES: WasteType[] = [];
 
@@ -44,6 +49,25 @@ try {
   }
   for (const k of toDelete) {
     localStorage.removeItem(k);
+  }
+
+  // Descomprimir y liberar espacio si el usuario tenía certificados con PDFs pesados en localStorage
+  const rawCerts = localStorage.getItem(STORAGE_KEYS.CERTIFICATES);
+  if (rawCerts && rawCerts.length > 50_000) {
+    try {
+      const parsedCerts = JSON.parse(rawCerts);
+      if (Array.isArray(parsedCerts)) {
+        saveCertificatesToIndexedDB(parsedCerts).catch(() => {});
+        const light = parsedCerts.map((c: any) => ({
+          ...c,
+          signedPdfData: c.signedPdfData && c.signedPdfData.length > 10_000 ? '' : c.signedPdfData,
+          signatureData: c.signatureData && c.signatureData.length > 50_000 ? '' : c.signatureData,
+        }));
+        localStorage.setItem(STORAGE_KEYS.CERTIFICATES, JSON.stringify(light));
+      }
+    } catch {
+      // ignore
+    }
   }
 } catch {
   // ignore in non-browser environments
@@ -932,25 +956,73 @@ export class RCDService {
   // ===============================================
   // CERTIFICATES MANAGEMENT
   // ===============================================
+  private static _cachedCertificates: Certificate[] | null = null;
+
   static getCertificates(): Certificate[] {
+    if (this._cachedCertificates && this._cachedCertificates.length > 0) {
+      return this._cachedCertificates;
+    }
+
     try {
       const data = localStorage.getItem(STORAGE_KEYS.CERTIFICATES);
-      if (!data) {
-        return INITIAL_CERTIFICATES;
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          this._cachedCertificates = parsed;
+          return this._cachedCertificates;
+        }
       }
-      return JSON.parse(data);
     } catch {
-      return INITIAL_CERTIFICATES;
+      // Ignorar error de parsing
     }
+
+    return this._cachedCertificates || INITIAL_CERTIFICATES;
   }
 
   static async loadCertificatesFromRemote(): Promise<Certificate[]> {
+    // Si la caché en memoria está vacía, precargar desde IndexedDB (donde están los PDFs y firmas completas)
+    if (!this._cachedCertificates || this._cachedCertificates.length === 0) {
+      try {
+        const idbCerts = await loadCertificatesFromIndexedDB();
+        if (idbCerts && idbCerts.length > 0) {
+          this._cachedCertificates = idbCerts;
+        }
+      } catch (e) {
+        // Ignorar
+      }
+    }
+
     if (SupabaseService.isConfigured()) {
       try {
         const remoteCerts = await SupabaseService.fetchCertificates();
         if (remoteCerts !== null && Array.isArray(remoteCerts)) {
-          this.saveCertificatesLocal(remoteCerts);
-          return remoteCerts;
+          // Smart merge: preservar signedPdfData y signatureData locales si el remoto aún no los tiene
+          const localCerts = this.getCertificates();
+          const localMap = new Map<string, Certificate>(localCerts.map((c) => [c.id, c]));
+
+          const mergedCerts = remoteCerts.map((remote) => {
+            const local = localMap.get(remote.id);
+            if (!local) return remote;
+
+            const signedPdfData =
+              local.signedPdfData && local.signedPdfData.length > 100
+                ? local.signedPdfData
+                : remote.signedPdfData || undefined;
+
+            const signatureData =
+              local.signatureData && local.signatureData.length > 50
+                ? local.signatureData
+                : remote.signatureData || undefined;
+
+            return {
+              ...remote,
+              signedPdfData,
+              signatureData,
+            };
+          });
+
+          this.saveCertificatesLocal(mergedCerts);
+          return mergedCerts;
         }
       } catch (err) {
         console.warn('Notice loading certificates from Supabase:', err);
@@ -960,7 +1032,77 @@ export class RCDService {
   }
 
   static saveCertificatesLocal(certs: Certificate[]): void {
-    localStorage.setItem(STORAGE_KEYS.CERTIFICATES, JSON.stringify(certs));
+    // 1. SIEMPRE mantener la caché en memoria actualizada para búsquedas síncronas instantáneas
+    this._cachedCertificates = certs;
+
+    // 2. Persistir copia completa sin límite de cuota en IndexedDB (con signedPdfData y firmas)
+    saveCertificatesToIndexedDB(certs).catch(() => {});
+
+    // 3. Persistir en localStorage versión ligera (sin PDFs pesados en base64) para evitar QuotaExceededError
+    try {
+      const lightCerts = certs.map((cert) => {
+        const hasHeavyPdf = cert.signedPdfData && cert.signedPdfData.length > 10_000;
+        const hasHeavySig = cert.signatureData && cert.signatureData.length > 50_000;
+        if (hasHeavyPdf || hasHeavySig) {
+          return {
+            ...cert,
+            signedPdfData: hasHeavyPdf ? '' : cert.signedPdfData,
+            signatureData: hasHeavySig ? '' : cert.signatureData,
+          };
+        }
+        return cert;
+      });
+
+      localStorage.setItem(STORAGE_KEYS.CERTIFICATES, JSON.stringify(lightCerts));
+    } catch {
+      // Si la cuota de localStorage aún está saturada por claves antiguas, intentar versión ultra-ligera
+      try {
+        const ultraLight = certs.map((c) => ({
+          ...c,
+          signedPdfData: '',
+          signatureData: '',
+        }));
+        localStorage.setItem(STORAGE_KEYS.CERTIFICATES, JSON.stringify(ultraLight));
+      } catch {
+        // Silenciar limpiamente cualquier error de cuota: los datos están completamente a salvo en memoria e IndexedDB
+      }
+    }
+  }
+
+  /**
+   * Garantiza que el PDF firmado o firma digital del certificado esté cargado en memoria,
+   * recuperándolo desde IndexedDB o Supabase si se almacenó la versión ligera en localStorage.
+   */
+  static async ensureCertificatePdf(certificate: Certificate): Promise<Certificate> {
+    if (!certificate || !certificate.id) return certificate;
+    if (certificate.signedPdfData && certificate.signedPdfData.length > 100) return certificate;
+
+    try {
+      const idbCerts = await loadCertificatesFromIndexedDB();
+      const local = idbCerts?.find((c) => c.id === certificate.id);
+      if (local && local.signedPdfData && local.signedPdfData.length > 100) {
+        certificate.signedPdfData = local.signedPdfData;
+        if (local.signedPdfFileName) certificate.signedPdfFileName = local.signedPdfFileName;
+        return certificate;
+      }
+    } catch {
+      // Ignorar y continuar a Supabase
+    }
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        const remotes = await SupabaseService.fetchCertificates();
+        const found = remotes?.find((c) => c.id === certificate.id);
+        if (found && found.signedPdfData) {
+          certificate.signedPdfData = found.signedPdfData;
+          if (found.signedPdfFileName) certificate.signedPdfFileName = found.signedPdfFileName;
+        }
+      } catch {
+        // Ignorar
+      }
+    }
+
+    return certificate;
   }
 
   /**
