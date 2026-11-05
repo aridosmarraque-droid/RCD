@@ -459,7 +459,7 @@ export const SignCertificateModal: React.FC<SignCertificateModalProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() => openPrintableCertificate(certificate, { forSignature: true })}
+                    onClick={() => openPrintableCertificate(certificate, { forSignature: true, includePhotos: certificate.includePhotos !== false })}
                     className="flex items-center space-x-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition shadow-md shadow-sky-600/20"
                   >
                     <Download className="w-3.5 h-3.5" />
