@@ -93,6 +93,7 @@ export interface Certificate {
   signatureType?: 'fnmt' | 'manual' | 'both' | 'acrobat_pades';
   signedPdfData?: string; // Base64 data URL (data:application/pdf;base64,...) or URL of the Acrobat/AutoFirma signed PDF
   signedPdfFileName?: string; // Original name of the signed PDF file (e.g. CERT-2026-0089_firmado.pdf)
+  includePhotos?: boolean; // TRUE = Anexo con 1 pág y 2 fotos por albarán; FALSE = Anexo listado de entradas sin fotos
 }
 
 export interface RCDUser {
@@ -120,3 +121,4 @@ export interface OCRScanResult {
   origin?: string;
   destination?: string;
 }
+
