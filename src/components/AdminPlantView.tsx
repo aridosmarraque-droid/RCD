@@ -1,194 +1,90 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  BarChart3,
-  Users,
   FileText,
   ShieldCheck,
-  Building2,
-  Printer,
+  Truck,
   Eye,
   Lock,
   CheckCircle2,
-  Factory,
-  RefreshCw,
-  Search,
-  Trash2,
-  Settings,
+  Calendar,
+  Building2,
+  Printer,
+  Download,
+  Filter,
+  PlusCircle,
+  AlertCircle,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Calendar,
-  Filter,
-  Plus,
   Edit3
 } from 'lucide-react';
-import { Albaran, Certificate, Client, RCDUser, WasteType } from '../types/rcd';
-import { ClientsDirectoryView } from './ClientsDirectoryView';
-import { UsersManagementView } from './UsersManagementView';
+import { Albaran, Certificate, Client } from '../types/rcd';
 import { PhotoLightboxModal } from './PhotoLightboxModal';
-import { EditAlbaranModal } from './EditAlbaranModal';
-import { SapAuditListView } from './SapAuditListView';
-import { openPrintableCertificate, openOrDownloadCertificate, downloadSignedPdfFile } from '../utils/certificatePdf';
 import { IssueCertificateModal } from './IssueCertificateModal';
 import { EditCertificateModal } from './EditCertificateModal';
-import { WasteTypesConfigModal } from './WasteTypesConfigModal';
-import { SignCertificateModal } from './SignCertificateModal';
-import { RCDService } from '../services/rcdStorage';
+import { openPrintableCertificate, openOrDownloadCertificate, downloadSignedPdfFile } from '../utils/certificatePdf';
 
-interface AdminPlantViewProps {
-  clients: Client[];
+interface ClientPortalViewProps {
+  client: Client;
   albaranes: Albaran[];
   certificates: Certificate[];
-  users: RCDUser[];
   onRefreshData: () => void;
 }
 
-type SortField = 'numAlbaran' | 'clientName' | 'date' | 'licensePlate' | 'wasteTypeName' | 'quantityTons';
+type ClientSortField = 'numAlbaran' | 'date' | 'licensePlate' | 'wasteTypeName' | 'quantityTons';
 
-const MONTHS_LIST = [
-  { value: 'all', label: 'Todos los meses' },
-  { value: '01', label: '01 - Enero' },
-  { value: '02', label: '02 - Febrero' },
-  { value: '03', label: '03 - Marzo' },
-  { value: '04', label: '04 - Abril' },
-  { value: '05', label: '05 - Mayo' },
-  { value: '06', label: '06 - Junio' },
-  { value: '07', label: '07 - Julio' },
-  { value: '08', label: '08 - Agosto' },
-  { value: '09', label: '09 - Septiembre' },
-  { value: '10', label: '10 - Octubre' },
-  { value: '11', label: '11 - Noviembre' },
-  { value: '12', label: '12 - Diciembre' },
-];
-
-export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
-  clients,
+export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
+  client,
   albaranes,
   certificates,
-  users,
   onRefreshData,
 }) => {
-  const [adminTab, setAdminTab] = useState<'analytics' | 'albaranes' | 'sap-audit' | 'clients' | 'certificates' | 'users'>('analytics');
+  const [activeTab, setActiveTab] = useState<'albaranes' | 'certificates'>('albaranes');
+  const [filterCertified, setFilterCertified] = useState<'all' | 'uncertified' | 'certified'>('all');
   const [selectedPhotoAlbaran, setSelectedPhotoAlbaran] = useState<Albaran | null>(null);
-  const [selectedAlbaranToEdit, setSelectedAlbaranToEdit] = useState<Albaran | null>(null);
-  const [selectedClientForCert, setSelectedClientForCert] = useState<Client | null>(null);
-  const [showWasteTypesModal, setShowWasteTypesModal] = useState(false);
-  const [selectedCertToSign, setSelectedCertToSign] = useState<Certificate | null>(null);
+  const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   const [selectedCertToEdit, setSelectedCertToEdit] = useState<Certificate | null>(null);
-  const [certFilterStatus, setCertFilterStatus] = useState<'all' | 'pending' | 'signed'>('all');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [createdCertNotice, setCreatedCertNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    onRefreshData();
-  }, []);
+  // Sorting
+  const [sortField, setSortField] = useState<ClientSortField>('date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  // Sorting state for Albaranes
-  const [sortField, setSortField] = useState<SortField>('date');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  // Client specific albaranes & certs
+  const clientAlbaranes = albaranes.filter(
+    (a) =>
+      a.clientId === client.id ||
+      (a.clientCode && client.code && a.clientCode.trim().toLowerCase() === client.code.trim().toLowerCase()) ||
+      (a.clientName && client.name && a.clientName.trim().toLowerCase() === client.name.trim().toLowerCase())
+  );
 
-  // Filtering state (Year & Month) for Albaranes list
-  const [selectedYear, setSelectedYear] = useState<string>('all');
-  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const availableUncertified = clientAlbaranes.filter((a) => !a.certified);
+  const certifiedAlbaranes = clientAlbaranes.filter((a) => a.certified);
 
-  // Exercise (Año) state for Analytics & Capacity Metrics
-  const currentYearStr = new Date().getFullYear().toString();
-  const [ejercicioYear, setEjercicioYear] = useState<string>('all');
+  const clientCertificates = certificates.filter(
+    (c) =>
+      c.clientId === client.id ||
+      (c.clientName && client.name && c.clientName.trim().toLowerCase() === client.name.trim().toLowerCase()) ||
+      (c.clientCif && client.cif && c.clientCif.trim().toLowerCase() === client.cif.trim().toLowerCase())
+  );
 
-  // Waste types list
-  const configuredWasteTypes = RCDService.getWasteTypes();
-
-  // Dynamic list of available years in dataset
-  const availableYears = Array.from(
-    new Set([
-      currentYearStr,
-      '2027',
-      '2026',
-      '2025',
-      ...albaranes.map((a) => (a.date ? a.date.substring(0, 4) : '')).filter(Boolean),
-    ])
-  ).sort((a, b) => Number(b) - Number(a));
-
-  // Filtered albaranes and certs for Analytics tab (Ejercicio)
-  const analyticsAlbaranes = albaranes.filter((alb) => {
-    if (ejercicioYear !== 'all' && alb.date) {
-      return alb.date.startsWith(ejercicioYear);
-    }
+  // Filtered list
+  const filteredAlbaranes = clientAlbaranes.filter((a) => {
+    if (filterCertified === 'uncertified') return !a.certified;
+    if (filterCertified === 'certified') return a.certified;
     return true;
   });
 
-  const analyticsCertificates = certificates.filter((cert) => {
-    if (ejercicioYear !== 'all' && cert.issueDate) {
-      return cert.issueDate.startsWith(ejercicioYear);
-    }
-    return true;
-  });
-
-  // Analytics Metrics
-  const totalTons = analyticsAlbaranes.reduce((acc, a) => acc + a.quantityTons, 0);
-  const totalCertifiedTons = analyticsCertificates.reduce((acc, c) => acc + c.totalTons, 0);
-  const totalUncertifiedTons = totalTons - totalCertifiedTons;
-
-  // Breakdown by waste code for Analytics
-  const wasteBreakdownMap: Record<string, { code: string; name: string; tons: number; count: number }> = {};
-  analyticsAlbaranes.forEach((alb) => {
-    if (!wasteBreakdownMap[alb.wasteTypeCode]) {
-      wasteBreakdownMap[alb.wasteTypeCode] = {
-        code: alb.wasteTypeCode,
-        name: alb.wasteTypeName,
-        tons: 0,
-        count: 0,
-      };
-    }
-    wasteBreakdownMap[alb.wasteTypeCode].tons += alb.quantityTons;
-    wasteBreakdownMap[alb.wasteTypeCode].count += 1;
-  });
-
-  const handleDeleteAlbaran = async (alb: Albaran) => {
-    if (alb.certified) {
-      alert(`El albarán Nº ${alb.numAlbaran} ya tiene un certificado emitido (${alb.certificateNumber}) y NO se puede eliminar.`);
-      return;
-    }
-
-    if (confirm(`¿Está seguro de eliminar permanentemente el albarán Nº ${alb.numAlbaran}?`)) {
-      await RCDService.deleteAlbaran(alb.id);
-      onRefreshData();
-    }
-  };
-
-  // Filter Albaranes by search, year, and month
-  const filteredAlbaranes = albaranes.filter((alb) => {
-    const matchesSearch =
-      alb.numAlbaran.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      alb.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      alb.licensePlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      alb.wasteTypeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (alb.origin && alb.origin.toLowerCase().includes(searchTerm.toLowerCase()));
-
-    if (!matchesSearch) return false;
-
-    if (selectedYear !== 'all' && alb.date) {
-      if (!alb.date.startsWith(selectedYear)) return false;
-    }
-
-    if (selectedMonth !== 'all' && alb.date) {
-      const monthPart = alb.date.substring(5, 7);
-      if (monthPart !== selectedMonth) return false;
-    }
-
-    return true;
-  });
-
-  // Sort Albaranes
-  const handleSort = (field: SortField) => {
+  const handleSort = (field: ClientSortField) => {
     if (sortField === field) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortField(field);
-      setSortDirection('asc');
+      setSortDir('asc');
     }
   };
 
-  const sortedAlbaranes = [...filteredAlbaranes].sort((a, b) => {
+  const displayedAlbaranes = [...filteredAlbaranes].sort((a, b) => {
     let valA: any = a[sortField];
     let valB: any = b[sortField];
 
@@ -199,13 +95,13 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
 
     if (typeof valA === 'string') {
       const cmp = valA.localeCompare(valB, 'es', { sensitivity: 'base' });
-      return sortDirection === 'asc' ? cmp : -cmp;
+      return sortDir === 'asc' ? cmp : -cmp;
     } else {
-      return sortDirection === 'asc' ? valA - valB : valB - valA;
+      return sortDir === 'asc' ? valA - valB : valB - valA;
     }
   });
 
-  const renderSortHeader = (field: SortField, label: string, align: 'left' | 'center' | 'right' = 'left') => {
+  const renderSortHeader = (field: ClientSortField, label: string, align: 'left' | 'center' | 'right' = 'left') => {
     const isActive = sortField === field;
     return (
       <th
@@ -213,12 +109,12 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
         className={`py-3 px-4 cursor-pointer select-none transition hover:text-white ${
           align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left'
         }`}
-        title={`Pinche para ordenar por ${label} (${isActive && sortDirection === 'asc' ? 'Descendente' : 'Ascendente'})`}
+        title={`Pinche para ordenar por ${label}`}
       >
         <div className={`inline-flex items-center space-x-1.5 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
           <span>{label}</span>
           {isActive ? (
-            sortDirection === 'asc' ? (
+            sortDir === 'asc' ? (
               <ArrowUp className="w-3.5 h-3.5 text-emerald-400" />
             ) : (
               <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
@@ -231,432 +127,194 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
     );
   };
 
+  const totalTonnage = clientAlbaranes.reduce((sum, a) => sum + a.quantityTons, 0);
+  const availableTonnage = availableUncertified.reduce((sum, a) => sum + a.quantityTons, 0);
+
   return (
     <div className="space-y-6">
       
-      {/* Admin Title Banner */}
+      {/* Client Overview Banner */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center space-x-2 mb-1">
-            <span className="bg-amber-500/20 text-amber-400 font-bold text-xs px-2.5 py-1 rounded-lg border border-amber-500/30">
-              Panel Administrador Planta
+          <div className="flex items-center space-x-3 mb-1">
+            <span className="bg-sky-500/20 text-sky-400 font-mono font-bold text-xs px-2.5 py-1 rounded-lg border border-sky-500/30">
+              {client.code}
             </span>
+            <h2 className="text-xl font-extrabold text-white">{client.name}</h2>
           </div>
-          <h2 className="text-xl font-extrabold text-white">Gestión Global Planta RCD</h2>
+          <p className="text-xs text-slate-400">
+            NIF/CIF: <strong className="text-slate-300 font-mono">{client.cif}</strong> | Email: {client.email} | Móvil: {client.mobile}
+          </p>
         </div>
 
-        {/* Action Button & Quick Tabs */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={onRefreshData}
-            title="Refrescar datos directamente desde la base de datos de Supabase"
-            className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition border border-slate-700 shadow"
-          >
-            <RefreshCw className="w-4 h-4 text-emerald-400" />
-            <span>Actualizar BBDD</span>
-          </button>
+        {/* Action: Emit Third Party Certificate */}
+        <button
+          onClick={() => setIsIssueModalOpen(true)}
+          disabled={availableUncertified.length === 0}
+          className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-extrabold px-5 py-3 rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center space-x-2 transition text-sm shrink-0"
+        >
+          <ShieldCheck className="w-5 h-5" />
+          <span>Emitir Certificado a Nombre de Terceros</span>
+        </button>
+      </div>
 
-          <button
-            onClick={() => setShowWasteTypesModal(true)}
-            className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition shadow-lg shadow-emerald-500/20"
-          >
-            <Settings className="w-4 h-4" />
-            <span>Configurar Residuos & Capacidades</span>
-          </button>
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+          <span className="text-xs text-slate-400 block mb-1">Tonelaje Total Recibido:</span>
+          <div className="text-2xl font-extrabold text-white">{totalTonnage.toFixed(2)} t</div>
+          <span className="text-[10px] text-slate-500">{clientAlbaranes.length} Entradas en báscula</span>
+        </div>
 
-          <div className="flex items-center space-x-1 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
-            <button
-              onClick={() => setAdminTab('analytics')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                adminTab === 'analytics' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              📊 Métricas & Capacidades
-            </button>
-            <button
-              onClick={() => setAdminTab('albaranes')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                adminTab === 'albaranes' ? 'bg-emerald-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              📄 Todos los Albaranes ({albaranes.length})
-            </button>
-            <button
-              onClick={() => setAdminTab('sap-audit')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 ${
-                adminTab === 'sap-audit' ? 'bg-sky-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-              }`}
-              title="Listado para puntear albaranes físicos de SAP y verificar registro de viajes"
-            >
-              <span>🔍 Punteo SAP</span>
-              {albaranes.filter((a) => !a.sapChecked).length > 0 && (
-                <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-1.5 py-0.5 rounded-full">
-                  {albaranes.filter((a) => !a.sapChecked).length} pend.
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setAdminTab('clients')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                adminTab === 'clients' ? 'bg-sky-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              👥 Fichas de Clientes ({clients.length})
-            </button>
-            <button
-              onClick={() => setAdminTab('certificates')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 ${
-                adminTab === 'certificates' ? 'bg-purple-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span>📜 Certificados ({certificates.length})</span>
-              {certificates.filter((c) => c.status === 'Pendiente de Firma' || !c.signedAt).length > 0 && (
-                <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-1.5 py-0.5 rounded-full animate-pulse">
-                  {certificates.filter((c) => c.status === 'Pendiente de Firma' || !c.signedAt).length} pendientes
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setAdminTab('users')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                adminTab === 'users' ? 'bg-emerald-400 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              🔐 Usuarios BBDD ({users.length})
-            </button>
-          </div>
+        <div className="bg-slate-900 border border-emerald-500/40 rounded-2xl p-4 shadow-lg bg-emerald-950/20">
+          <span className="text-xs text-emerald-400 font-medium block mb-1">Disponible para Certificados:</span>
+          <div className="text-2xl font-extrabold text-emerald-400">{availableTonnage.toFixed(2)} t</div>
+          <span className="text-[10px] text-emerald-300/70">{availableUncertified.length} albaranes libres</span>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+          <span className="text-xs text-slate-400 block mb-1">Tonelaje Certificado:</span>
+          <div className="text-2xl font-extrabold text-slate-300">{(totalTonnage - availableTonnage).toFixed(2)} t</div>
+          <span className="text-[10px] text-slate-500">{certifiedAlbaranes.length} albaranes bloqueados</span>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+          <span className="text-xs text-slate-400 block mb-1">Certificados Emitidos:</span>
+          <div className="text-2xl font-extrabold text-sky-400">{clientCertificates.length}</div>
+          <span className="text-[10px] text-slate-500">Documentos oficiales RCD</span>
         </div>
       </div>
 
-      {/* TAB 1: ANALYTICS & METRICS */}
-      {adminTab === 'analytics' && (
-        <div className="space-y-6">
-          {/* Ejercicio / Year Selection Filter Bar */}
-          <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
-            <div className="flex items-center space-x-2 text-white text-xs font-bold">
-              <Calendar className="w-4 h-4 text-amber-400" />
-              <span>Selección de Ejercicio de Capacidad y Métricas de Planta:</span>
-            </div>
+      {/* Navigation Tabs */}
+      <div className="flex items-center space-x-2 border-b border-slate-800 pb-2">
+        <button
+          onClick={() => setActiveTab('albaranes')}
+          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 transition ${
+            activeTab === 'albaranes'
+              ? 'bg-slate-800 text-white border border-slate-700 shadow'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+          }`}
+        >
+          <FileText className="w-4 h-4 text-emerald-400" />
+          <span>Historial de Albaranes ({clientAlbaranes.length})</span>
+        </button>
 
-            <div className="flex items-center space-x-2 w-full sm:w-auto">
-              <span className="text-xs text-slate-400 font-medium">Ejercicio:</span>
-              <select
-                value={ejercicioYear}
-                onChange={(e) => setEjercicioYear(e.target.value)}
-                className="bg-slate-950 text-emerald-400 font-extrabold text-xs border border-slate-800 rounded-xl px-3 py-2 focus:border-emerald-500 focus:outline-none"
-              >
-                <option value="all">Todos los Ejercicios Históricos</option>
-                {availableYears.map((yr) => (
-                  <option key={yr} value={yr}>
-                    Ejercicio {yr}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+        <button
+          onClick={() => setActiveTab('certificates')}
+          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 transition ${
+            activeTab === 'certificates'
+              ? 'bg-slate-800 text-white border border-slate-700 shadow'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 text-sky-400" />
+          <span>Certificados Emitidos ({clientCertificates.length})</span>
+        </button>
+      </div>
 
-          {/* Key Metric Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
-              <span className="text-xs text-slate-400 block mb-1">Tonelaje Total Recibido:</span>
-              <div className="text-2xl font-extrabold text-white">{totalTons.toFixed(2)} t</div>
-              <span className="text-[10px] text-emerald-400 font-semibold">{albaranes.length} camiones registrados</span>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
-              <span className="text-xs text-slate-400 block mb-1">Tonelaje Certificado:</span>
-              <div className="text-2xl font-extrabold text-emerald-400">{totalCertifiedTons.toFixed(2)} t</div>
-              <span className="text-[10px] text-slate-400">{certificates.length} certificados emitidos</span>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
-              <span className="text-xs text-slate-400 block mb-1">Pendiente de Certificar:</span>
-              <div className="text-2xl font-extrabold text-amber-400">{totalUncertifiedTons.toFixed(2)} t</div>
-              <span className="text-[10px] text-slate-400">Disponible en báscula</span>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
-              <span className="text-xs text-slate-400 block mb-1">Clientes Activos:</span>
-              <div className="text-2xl font-extrabold text-sky-400">{clients.length}</div>
-              <span className="text-[10px] text-slate-400">Notificaciones configuradas</span>
-            </div>
-          </div>
-
-          {/* Waste Capacity and Remaining Capacity per Waste Type */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-white text-base flex items-center space-x-2">
-                <BarChart3 className="w-5 h-5 text-emerald-400" />
-                <span>Residuo Entrado y Capacidad Restante por Tipo de Residuo (LER)</span>
-              </h3>
+      {/* TAB 1: ALBARANES TABLE */}
+      {activeTab === 'albaranes' && (
+        <div className="space-y-4">
+          
+          {/* Sub-filters for Albaranes */}
+          <div className="flex items-center justify-between bg-slate-900 p-3 rounded-xl border border-slate-800">
+            <div className="flex items-center space-x-2 text-xs">
+              <Filter className="w-4 h-4 text-slate-400" />
+              <span className="text-slate-400 font-medium">Filtrar estado:</span>
               <button
-                onClick={() => setShowWasteTypesModal(true)}
-                className="text-xs text-emerald-400 hover:text-emerald-300 font-bold underline"
+                onClick={() => setFilterCertified('all')}
+                className={`px-2.5 py-1 rounded-lg font-bold text-xs transition ${
+                  filterCertified === 'all' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'
+                }`}
               >
-                Editar Capacidades
+                Todos ({clientAlbaranes.length})
+              </button>
+              <button
+                onClick={() => setFilterCertified('uncertified')}
+                className={`px-2.5 py-1 rounded-lg font-bold text-xs transition ${
+                  filterCertified === 'uncertified' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                🟢 Disponibles ({availableUncertified.length})
+              </button>
+              <button
+                onClick={() => setFilterCertified('certified')}
+                className={`px-2.5 py-1 rounded-lg font-bold text-xs transition ${
+                  filterCertified === 'certified' ? 'bg-slate-800 text-slate-300' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                🔒 Certificados ({certifiedAlbaranes.length})
               </button>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {configuredWasteTypes.length === 0 ? (
-                <div className="col-span-full py-8 px-4 text-center bg-slate-950 border border-slate-800 rounded-xl space-y-3">
-                  <p className="text-xs text-slate-400">
-                    No hay tipos de residuos registrados en la base de datos (tabla <code className="text-emerald-400 font-mono">rcd_waste_types</code>).
-                  </p>
-                  <button
-                    onClick={() => setShowWasteTypesModal(true)}
-                    className="inline-flex items-center space-x-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3.5 py-2 rounded-lg text-xs transition"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Configurar Catálogo de Residuos LER</span>
-                  </button>
-                </div>
-              ) : (
-                configuredWasteTypes.map((wt) => {
-                  const enteredTons = wasteBreakdownMap[wt.code]?.tons || 0;
-                  const maxCap = wt.maxCapacityTons || 5000;
-                  const remainingTons = Math.max(0, maxCap - enteredTons);
-                  const occupancyPct = Math.min(100, Math.round((enteredTons / maxCap) * 100));
-
-                  let barColor = 'bg-emerald-500';
-                  let textColor = 'text-emerald-400';
-                  if (occupancyPct > 85) {
-                    barColor = 'bg-rose-500';
-                    textColor = 'text-rose-400';
-                  } else if (occupancyPct > 60) {
-                    barColor = 'bg-amber-500';
-                    textColor = 'text-amber-400';
-                  }
-
-                  return (
-                    <div key={wt.code} className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
-                      <div className="flex justify-between items-start">
-                        <span className="font-mono font-bold text-xs text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                          LER {wt.code}
-                        </span>
-                        <span className="text-[11px] font-bold text-slate-400">{wt.category}</span>
-                      </div>
-
-                      <div className="text-xs font-bold text-white line-clamp-1">{wt.name}</div>
-
-                      <div className="grid grid-cols-2 gap-2 text-xs bg-slate-900 p-2.5 rounded-lg border border-slate-800">
-                        <div>
-                          <span className="text-slate-400 block text-[10px]">Residuo Entrado:</span>
-                          <span className="font-extrabold text-white text-sm">{enteredTons.toFixed(2)} t</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400 block text-[10px]">Capacidad Restante:</span>
-                          <span className={`font-extrabold text-sm ${textColor}`}>
-                            {remainingTons.toFixed(2)} t
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] font-semibold text-slate-400">
-                          <span>Ocupación de Planta: {occupancyPct}%</span>
-                          <span>Máx: {maxCap} t</span>
-                        </div>
-                        <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
-                          <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${occupancyPct}%` }} />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: ALL ALBARANES */}
-      {adminTab === 'albaranes' && (
-        <div className="space-y-4">
-          <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-lg">
-            {/* Search Input */}
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por albarán, cliente, matrícula o residuo..."
-                className="w-full bg-slate-950 text-white text-xs pl-9 pr-3 py-2.5 rounded-xl border border-slate-800 focus:outline-none"
-              />
-            </div>
-
-            {/* Year & Month Dropdowns */}
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center space-x-1.5 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-slate-400 font-medium">Año:</span>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(e.target.value)}
-                  className="bg-slate-900 text-white font-bold text-xs border border-slate-700 rounded-lg px-2 py-1 focus:outline-none"
-                >
-                  <option value="all">Todos los Años</option>
-                  {availableYears.map((yr) => (
-                    <option key={yr} value={yr}>
-                      {yr}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center space-x-1.5 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
-                <Filter className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-slate-400 font-medium">Mes:</span>
-                <select
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="bg-slate-900 text-white font-bold text-xs border border-slate-700 rounded-lg px-2 py-1 focus:outline-none"
-                >
-                  {MONTHS_LIST.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <span className="text-xs text-slate-400 font-medium px-3 py-2 bg-slate-950 rounded-xl border border-slate-800">
-                Mostrando <strong className="text-emerald-400 font-bold">{sortedAlbaranes.length}</strong> albaranes
-              </span>
-            </div>
           </div>
 
+          {/* Albaranes Table */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="bg-slate-950 text-slate-400 uppercase font-bold text-[11px] border-b border-slate-800">
                   <tr>
-                    {renderSortHeader('numAlbaran', 'Albarán SAP')}
-                    {renderSortHeader('clientName', 'Cliente / Transportista')}
+                    {renderSortHeader('numAlbaran', 'Nº Albarán SAP')}
                     {renderSortHeader('date', 'Fecha / Hora')}
                     {renderSortHeader('licensePlate', 'Matrícula')}
-                    {renderSortHeader('wasteTypeName', 'Residuo (LER)')}
+                    {renderSortHeader('wasteTypeName', 'Residuo (Código LER)')}
                     {renderSortHeader('quantityTons', 'Cantidad (t)', 'right')}
-                    <th className="py-3 px-4 text-center">Fotos (3/3)</th>
-                    <th className="py-3 px-4 text-center">Punteo SAP</th>
-                    <th className="py-3 px-4 text-center">Certificado</th>
-                    <th className="py-3 px-4 text-center">Acción</th>
+                    <th className="py-3 px-4 text-center">Fotos</th>
+                    <th className="py-3 px-4 text-center">Estado Certificado</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {sortedAlbaranes.length === 0 ? (
+                  {displayedAlbaranes.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-12 text-center text-slate-400">
-                        <div className="flex flex-col items-center justify-center space-y-2">
-                          <FileText className="w-8 h-8 text-slate-600 mb-1" />
-                          <span className="font-bold text-slate-300 text-sm">No hay albaranes registrados</span>
-                          <span className="text-xs text-slate-500">
-                            La base de datos no contiene albaranes con los filtros actuales o aún no se han registrado entradas en báscula.
-                          </span>
-                        </div>
+                      <td colSpan={7} className="py-8 text-center text-slate-500">
+                        No hay albaranes registrados que coincidan con el filtro.
                       </td>
                     </tr>
                   ) : (
-                    sortedAlbaranes.map((alb) => (
+                    displayedAlbaranes.map((alb) => (
                       <tr key={alb.id} className="hover:bg-slate-800/50 transition">
-                        <td className="py-3 px-4 font-mono font-bold text-emerald-400">{alb.numAlbaran}</td>
-                        <td className="py-3 px-4 font-bold text-white">
-                          <div>{alb.clientName}</div>
+                        <td className="py-3 px-4 font-mono font-bold text-emerald-400">
+                          {alb.numAlbaran}
+                        </td>
+                        <td className="py-3 px-4 text-slate-300">
+                          {alb.date} <span className="text-slate-500 text-[10px]">{alb.time}</span>
+                        </td>
+                        <td className="py-3 px-4 font-mono font-semibold text-amber-400">
+                          {alb.licensePlate}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-bold text-white block">{alb.wasteTypeCode}</span>
+                          <span className="text-[10px] text-slate-400 block">{alb.wasteTypeName}</span>
                           {alb.origin && (
-                            <div className="text-[11px] font-normal text-emerald-400/90 flex items-center space-x-1 mt-0.5" title={`Origen del residuo (Datos Destino SAP): ${alb.origin}`}>
-                              <span>📍</span>
-                              <span className="truncate max-w-[190px]">{alb.origin}</span>
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-slate-300">{alb.date} <span className="text-[10px] text-slate-500">{alb.time}</span></td>
-                        <td className="py-3 px-4 font-mono font-bold text-amber-400">{alb.licensePlate}</td>
-                        <td className="py-3 px-4">{alb.wasteTypeCode} - {alb.wasteTypeName}</td>
-                        <td className="py-3 px-4 text-right font-extrabold text-white">{alb.quantityTons.toFixed(2)} t</td>
-                        <td className="py-3 px-4 text-center">
-                          {(() => {
-                            const pCount = [alb.albaranPhotoUrl, alb.truckPhotoUrl, alb.unloadPhotoUrl].filter(Boolean).length;
-                            return (
-                              <button
-                                onClick={() => setSelectedPhotoAlbaran(alb)}
-                                className={`px-2 py-1 rounded text-xs font-bold border transition inline-flex items-center space-x-1 ${
-                                  pCount === 3
-                                    ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20'
-                                    : pCount > 0
-                                    ? 'text-amber-300 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20'
-                                    : 'text-rose-300 bg-rose-500/10 border-rose-500/20 hover:bg-rose-500/20'
-                                }`}
-                                title="Ver, añadir fotos faltantes o sustituir por error"
-                              >
-                                <span>📷</span>
-                                <span>{pCount}/3</span>
-                              </button>
-                            );
-                          })()}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          {alb.sapChecked ? (
-                            <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full text-[10px] font-bold border border-emerald-500/20 inline-flex items-center space-x-1" title={`Punteado SAP el ${alb.sapCheckedAt || ''}`}>
-                              <span>✓ SAP OK</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full text-[10px] font-semibold border border-slate-700 inline-flex items-center space-x-1">
-                              <span>⏳ Pendiente</span>
+                            <span className="text-[10px] text-emerald-400/90 font-medium block truncate max-w-[170px]" title={`Origen / Destino del residuo: ${alb.origin}`}>
+                              📍 {alb.origin}
                             </span>
                           )}
+                        </td>
+                        <td className="py-3 px-4 text-right font-extrabold text-white text-sm">
+                          {alb.quantityTons.toFixed(2)} t
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <button
+                            onClick={() => setSelectedPhotoAlbaran(alb)}
+                            className="inline-flex items-center space-x-1 text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-1 rounded-lg border border-sky-500/20 font-semibold transition"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Ver Fotos</span>
+                          </button>
                         </td>
                         <td className="py-3 px-4 text-center">
                           {alb.certified ? (
-                            <span className="text-slate-300 bg-slate-800 px-2 py-0.5 rounded-full text-[10px] font-bold border border-slate-700">
-                              🔒 {alb.certificateNumber}
+                            <span className="inline-flex items-center space-x-1 text-slate-300 bg-slate-800 px-2.5 py-1 rounded-full text-[10px] font-bold border border-slate-700" title={`Certificado: ${alb.certificateNumber}`}>
+                              <Lock className="w-3 h-3 text-slate-400" />
+                              <span>INCLUIDO ({alb.certificateNumber})</span>
                             </span>
                           ) : (
-                            <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full text-[10px] font-bold border border-emerald-500/20">
-                              🟢 LIBRE
+                            <span className="inline-flex items-center space-x-1 text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full text-[10px] font-bold border border-emerald-500/20">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                              <span>DISPONIBLE</span>
                             </span>
                           )}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <div className="flex items-center justify-center space-x-1.5">
-                            {/* Edit Button (Admin Only) */}
-                            {alb.certified ? (
-                              <button
-                                disabled
-                                title="No se puede editar: El albarán ya fue incluido en un certificado oficial."
-                                className="p-1.5 text-slate-600 bg-slate-900 rounded cursor-not-allowed border border-slate-800"
-                              >
-                                <Lock className="w-3.5 h-3.5 opacity-40" />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => setSelectedAlbaranToEdit(alb)}
-                                title="Editar Albarán (Solo Administrador)"
-                                className="p-1.5 text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-lg transition"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-
-                            {/* Delete Button */}
-                            {alb.certified ? (
-                              <button
-                                disabled
-                                title="No se puede eliminar: El albarán tiene un certificado emitido."
-                                className="p-1.5 text-slate-600 bg-slate-900 rounded cursor-not-allowed border border-slate-800"
-                              >
-                                <Trash2 className="w-3.5 h-3.5 opacity-40" />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleDeleteAlbaran(alb)}
-                                title="Eliminar Albarán"
-                                className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg transition"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
                         </td>
                       </tr>
                     ))
@@ -668,241 +326,179 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
         </div>
       )}
 
-      {/* TAB: SAP AUDIT & RECONCILIATION */}
-      {adminTab === 'sap-audit' && (
-        <SapAuditListView
-          albaranes={albaranes}
-          clients={clients}
-          onRefreshData={onRefreshData}
-          onOpenPhotoManager={(alb) => setSelectedPhotoAlbaran(alb)}
-          onEditAlbaran={(alb) => setSelectedAlbaranToEdit(alb)}
-        />
-      )}
-
-      {/* TAB 3: CLIENTS DIRECTORY */}
-      {adminTab === 'clients' && (
-        <ClientsDirectoryView clients={clients} onClientsUpdated={onRefreshData} />
-      )}
-
-      {/* TAB 4: CERTIFICATES MANAGEMENT */}
-      {adminTab === 'certificates' && (
-        <div className="space-y-4">
-          {/* Certificate Filter Tabs */}
-          <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
-            <div className="flex items-center space-x-2 text-white text-xs font-bold">
-              <FileText className="w-4 h-4 text-purple-400" />
-              <span>Gestión de Certificados de Valorización y Firmas Digitales:</span>
-            </div>
-
-            <div className="flex items-center space-x-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
-              <button
-                onClick={() => setCertFilterStatus('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  certFilterStatus === 'all' ? 'bg-purple-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Todos ({certificates.length})
-              </button>
-              <button
-                onClick={() => setCertFilterStatus('pending')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1 ${
-                  certFilterStatus === 'pending' ? 'bg-amber-500 text-slate-950 shadow' : 'text-amber-400 hover:text-amber-300'
-                }`}
-              >
-                <span>⏳ Pendientes de Firma</span>
-                <span className="bg-amber-950/80 text-amber-300 px-1.5 py-0.2 rounded-full text-[10px]">
-                  {certificates.filter((c) => c.status === 'Pendiente de Firma' || !c.signedAt).length}
-                </span>
-              </button>
-              <button
-                onClick={() => setCertFilterStatus('signed')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  certFilterStatus === 'signed' ? 'bg-emerald-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                ✓ Firmados ({certificates.filter((c) => c.status === 'Emitido' && c.signedAt).length})
-              </button>
-            </div>
+      {/* Created Cert Notification Banner */}
+      {createdCertNotice && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-amber-200 text-xs flex items-start space-x-3 shadow-lg">
+          <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex-1 space-y-1">
+            <h4 className="font-bold text-amber-300 text-sm">Certificado Registrado - Pendiente de Firma</h4>
+            <p className="text-amber-200/90 leading-relaxed">{createdCertNotice}</p>
           </div>
+          <button
+            onClick={() => setCreatedCertNotice(null)}
+            className="text-amber-400 hover:text-white p-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
+      {/* TAB 2: ISSUED CERTIFICATES */}
+      {activeTab === 'certificates' && (
+        <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {certificates
-              .filter((cert) => {
-                if (certFilterStatus === 'pending') return cert.status === 'Pendiente de Firma' || !cert.signedAt;
-                if (certFilterStatus === 'signed') return cert.status === 'Emitido' && cert.signedAt;
-                return true;
-              })
-              .map((cert) => (
-                <div key={cert.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-mono font-bold text-sky-400 text-sm">{cert.certificateNumber}</span>
-                      <button
-                        onClick={() => setSelectedCertToEdit(cert)}
-                        className="text-[11px] bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 border border-slate-700 px-2 py-0.5 rounded-lg font-bold flex items-center space-x-1 transition"
-                        title="Modificar promotor, obra o albaranes incluidos"
-                      >
-                        <Edit3 className="w-3 h-3 text-amber-400" />
-                        <span>Modificar</span>
-                      </button>
+            {clientCertificates.length === 0 ? (
+              <div className="col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-500 text-xs">
+                No se ha emitido ningún certificado de residuos para este cliente todavía.
+              </div>
+            ) : (
+              clientCertificates.map((cert) => (
+                <div key={cert.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+                  <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono font-bold text-sky-400 text-sm block">{cert.certificateNumber}</span>
+                        {(cert.status === 'Pendiente de Firma' || !cert.signedAt) && (
+                          <button
+                            onClick={() => setSelectedCertToEdit(cert)}
+                            className="text-[11px] bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 border border-slate-700 px-2 py-0.5 rounded-lg font-bold flex items-center space-x-1 transition"
+                            title="Modificar datos del promotor, obra o albaranes incluidos"
+                          >
+                            <Edit3 className="w-3 h-3 text-amber-400" />
+                            <span>Modificar</span>
+                          </button>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-slate-400">Fecha de Emisión: {cert.issueDate}</span>
                     </div>
                     {cert.status === 'Pendiente de Firma' || !cert.signedAt ? (
-                      <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold px-2.5 py-1 rounded-full">
-                        ⏳ Pendiente de Firma
-                      </span>
-                    ) : cert.signedPdfData ? (
-                      <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center space-x-1">
-                        <span>✓ PDF Firmado con Acrobat (FNMT)</span>
+                      <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2.5 py-1 rounded-full border border-amber-500/30 flex items-center space-x-1">
+                        <span>⏳ Pendiente de Firma Digital</span>
                       </span>
                     ) : (
-                      <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold px-2.5 py-1 rounded-full">
-                        ✓ Sello Digital Web
+                      <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2.5 py-1 rounded-full border border-emerald-500/30 flex items-center space-x-1">
+                        <span>✓ Firmado Digitalmente</span>
                       </span>
                     )}
                   </div>
 
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs space-y-1">
-                    <div className="text-slate-400">Cliente Solicitante: <strong className="text-white">{cert.clientName}</strong> ({cert.clientCif})</div>
-                    <span className="text-slate-500 block text-[10px] uppercase font-bold pt-1">Promotor Beneficiario:</span>
-                    <div className="font-bold text-white text-sm">{cert.thirdPartyName}</div>
-                    <div className="text-slate-400">CIF: {cert.thirdPartyCif} | Obra: {cert.constructionSiteName}</div>
-                    <div className="text-emerald-400 font-bold pt-1">
-                      Total Certificado: {cert.totalTons.toFixed(2)} Toneladas ({cert.albaranIds.length} albaranes)
+                  <div className="space-y-2 text-xs">
+                    <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 space-y-1">
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold">Promotor / Beneficiario Tercero:</span>
+                      <div className="font-bold text-white text-sm">{cert.thirdPartyName}</div>
+                      <div className="text-slate-400">NIF/CIF: {cert.thirdPartyCif}</div>
+                      <div className="text-slate-400">Obra: <strong className="text-slate-200">{cert.constructionSiteName}</strong></div>
                     </div>
-                    {cert.signedAt && (
-                      <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 mt-2 flex flex-col gap-0.5">
+
+                    <div className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Residuos Incluidos:</span>
+                        <div className="flex items-center space-x-2 mt-0.5">
+                          <span className="font-bold text-white text-xs">{cert.albaranIds.length} Entradas</span>
+                          {cert.includePhotos === false ? (
+                            <span className="text-[10px] bg-sky-500/15 text-sky-400 border border-sky-500/30 px-1.5 py-0.2 rounded font-semibold">
+                              Listado sin fotos
+                            </span>
+                          ) : (
+                            <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded font-semibold">
+                              Con fotos
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-400 block">Total Certificado:</span>
+                        <span className="font-extrabold text-emerald-400 text-base">{cert.totalTons.toFixed(2)} t</span>
+                      </div>
+                    </div>
+
+                    {cert.status === 'Pendiente de Firma' || !cert.signedAt ? (
+                      <div className="bg-amber-950/40 border border-amber-800/60 p-2.5 rounded-xl text-[11px] text-amber-300 flex items-start space-x-2">
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <span>
+                          El certificado estará disponible firmado digitalmente en breve. Si detecta algún error en los datos o en los albaranes, puede modificarlo antes de que sea firmado con el botón "Modificar Certificado".
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-[11px] text-slate-400 flex flex-col gap-0.5">
                         <div>Firmado por: <strong className="text-slate-200">{cert.signerName}</strong></div>
-                        <div className="text-[10px] text-slate-500">{cert.signedAt} {cert.signedPdfFileName ? `• Archivo: ${cert.signedPdfFileName}` : ''}</div>
+                        <div className="text-[10px] text-emerald-400 font-semibold">
+                          {cert.signedPdfData ? '✓ Documento Oficial Firmado (Acrobat / FNMT)' : '✓ Sello Electrónico FNMT'}
+                        </div>
                       </div>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {cert.status === 'Pendiente de Firma' || !cert.signedAt ? (
-                      <>
-                        <button
-                          onClick={() => setSelectedCertToSign(cert)}
-                          className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition"
-                        >
-                          <ShieldCheck className="w-4 h-4" />
-                          <span>✍️ Firmar / Subir PDF</span>
-                        </button>
-                        <button
-                          onClick={() => openPrintableCertificate(cert, { forSignature: true })}
-                          className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-2 transition border border-slate-700"
-                        >
-                          <Printer className="w-4 h-4" />
-                          <span>Ver Documento para Firma</span>
-                        </button>
-                        <button
-                          onClick={() => setSelectedCertToEdit(cert)}
-                          className="w-full sm:col-span-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition"
-                        >
-                          <Edit3 className="w-4 h-4 text-amber-400" />
-                          <span>✏️ Modificar Certificado (Albaranes y Promotor)</span>
-                        </button>
-                      </>
-                    ) : cert.signedPdfData ? (
-                      <>
-                        <button
-                          onClick={() => downloadSignedPdfFile(cert)}
-                          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition"
-                        >
-                          <Printer className="w-4 h-4" />
-                          <span>📥 Descargar PDF Firmado (Acrobat)</span>
-                        </button>
-                        <button
-                          onClick={() => setSelectedCertToSign(cert)}
-                          className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition border border-slate-700"
-                        >
-                          <span>🔄 Sustituir PDF</span>
-                        </button>
-                        <button
-                          onClick={() => setSelectedCertToEdit(cert)}
-                          className="w-full sm:col-span-2 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-medium py-1.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition"
-                        >
-                          <Edit3 className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Modificar Datos o Albaranes del Certificado</span>
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => openPrintableCertificate(cert)}
-                          className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-2 transition"
-                        >
-                          <Printer className="w-4 h-4" />
-                          <span>Imprimir / Ver PDF</span>
-                        </button>
-                        <button
-                          onClick={() => setSelectedCertToSign(cert)}
-                          className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition border border-slate-700"
-                        >
-                          <span>✍️ Subir PDF Acrobat</span>
-                        </button>
-                        <button
-                          onClick={() => setSelectedCertToEdit(cert)}
-                          className="w-full sm:col-span-2 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-medium py-1.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition"
-                        >
-                          <Edit3 className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Modificar Datos o Albaranes del Certificado</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
+                  {/* Print / Download / Edit Actions */}
+                  {cert.status === 'Pendiente de Firma' || !cert.signedAt ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <button
+                        onClick={() =>
+                          openPrintableCertificate(cert, {
+                            isProvisionalPreview: true,
+                            includePhotos: cert.includePhotos !== false,
+                          })
+                        }
+                        className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>Ver Borrador Provisional</span>
+                      </button>
+                      <button
+                        onClick={() => setSelectedCertToEdit(cert)}
+                        className="w-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition"
+                      >
+                        <Edit3 className="w-4 h-4 text-amber-400" />
+                        <span>✏️ Modificar Certificado</span>
+                      </button>
+                    </div>
+                  ) : cert.signedPdfData ? (
+                    <button
+                      onClick={() => downloadSignedPdfFile(cert)}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition shadow-emerald-900/30"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Descargar Certificado Firmado (PDF Oficial FNMT)</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() =>
+                        openPrintableCertificate(cert, {
+                          isProvisionalPreview: false,
+                          includePhotos: cert.includePhotos !== false,
+                        })
+                      }
+                      className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>Ver / Imprimir Certificado PDF</span>
+                    </button>
+                  )}
                 </div>
-              ))}
+              ))
+            )}
           </div>
         </div>
       )}
 
-      {/* TAB 5: USERS & SECURITY */}
-      {adminTab === 'users' && (
-        <UsersManagementView
-          users={users}
-          clients={clients}
-          onUsersChanged={onRefreshData}
-        />
-      )}
-
-      {/* Edit Albaran Modal (Admin Only) */}
-      {selectedAlbaranToEdit && (
-        <EditAlbaranModal
-          albaran={selectedAlbaranToEdit}
-          clients={clients}
-          wasteTypes={configuredWasteTypes}
-          onClose={() => setSelectedAlbaranToEdit(null)}
-          onSaved={() => {
-            onRefreshData();
-            setSelectedAlbaranToEdit(null);
-          }}
-        />
-      )}
-
-      {/* Lightbox Modal with Admin Photo Management */}
+      {/* Lightbox Modal */}
       <PhotoLightboxModal
         albaran={selectedPhotoAlbaran}
-        isAdmin={true}
-        clients={clients}
         onClose={() => setSelectedPhotoAlbaran(null)}
-        onAlbaranUpdated={(updated) => {
-          setSelectedPhotoAlbaran(updated);
-          onRefreshData();
-        }}
       />
 
-      {/* Sign Certificate Modal */}
-      <SignCertificateModal
-        isOpen={!!selectedCertToSign}
-        onClose={() => setSelectedCertToSign(null)}
-        certificate={selectedCertToSign}
-        onSignedSuccess={() => {
+      {/* Third Party Certificate Modal */}
+      <IssueCertificateModal
+        isOpen={isIssueModalOpen}
+        onClose={() => setIsIssueModalOpen(false)}
+        client={client}
+        availableAlbaranes={availableUncertified}
+        onCertificateCreated={(newCert) => {
+          setCreatedCertNotice(
+            `El certificado ${newCert.certificateNumber} estará disponible con firma digital en breve. Se ha notificado al responsable mediante correo electrónico.`
+          );
+          setActiveTab('certificates');
           onRefreshData();
-          setSelectedCertToSign(null);
-        }}
-        onEditRequested={(cert) => {
-          setSelectedCertToSign(null);
-          setSelectedCertToEdit(cert);
         }}
       />
 
@@ -920,27 +516,6 @@ export const AdminPlantView: React.FC<AdminPlantViewProps> = ({
           setSelectedCertToEdit(null);
           onRefreshData();
         }}
-      />
-
-      {/* Modal if selected client for cert */}
-      {selectedClientForCert && (
-        <IssueCertificateModal
-          isOpen={!!selectedClientForCert}
-          onClose={() => setSelectedClientForCert(null)}
-          client={selectedClientForCert}
-          availableAlbaranes={albaranes.filter((a) => (a.clientId === selectedClientForCert.id || a.clientCode === selectedClientForCert.code) && !a.certified)}
-          onCertificateCreated={() => {
-            onRefreshData();
-            setSelectedClientForCert(null);
-          }}
-        />
-      )}
-
-      {/* Waste Types & Capacity Config Modal */}
-      <WasteTypesConfigModal
-        isOpen={showWasteTypesModal}
-        onClose={() => setShowWasteTypesModal(false)}
-        onDataChanged={onRefreshData}
       />
 
     </div>
