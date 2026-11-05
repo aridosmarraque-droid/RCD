@@ -200,6 +200,7 @@ export class SupabaseService {
       rcd_signature_type: cert.signatureType || 'fnmt',
       rcd_signed_pdf_data: cert.signedPdfData || null,
       rcd_signed_pdf_filename: cert.signedPdfFileName || null,
+      rcd_include_photos: cert.includePhotos !== undefined ? cert.includePhotos : true,
       rcd_created_at: cert.issueDate ? `${cert.issueDate}T00:00:00.000Z` : new Date().toISOString(),
     };
   }
@@ -232,6 +233,7 @@ export class SupabaseService {
       signatureType: row.rcd_signature_type || undefined,
       signedPdfData: row.rcd_signed_pdf_data || undefined,
       signedPdfFileName: row.rcd_signed_pdf_filename || undefined,
+      includePhotos: row.rcd_include_photos !== undefined ? Boolean(row.rcd_include_photos) : undefined,
     };
   }
 
@@ -691,6 +693,12 @@ export class SupabaseService {
       const { error } = await supabase.from('rcd_certificates').upsert(row, { onConflict: 'rcd_id' });
 
       if (error) {
+        if (error.message?.includes('rcd_include_photos')) {
+          const fallbackRow = { ...row };
+          delete (fallbackRow as any).rcd_include_photos;
+          await supabase.from('rcd_certificates').upsert(fallbackRow, { onConflict: 'rcd_id' });
+          return;
+        }
         console.warn('Notice upserting rcd_certificates into Supabase:', error.message || error);
       }
     } catch (err) {
