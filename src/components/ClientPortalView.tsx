@@ -393,7 +393,18 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     <div className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
                       <div>
                         <span className="text-[10px] text-slate-400 block">Residuos Incluidos:</span>
-                        <span className="font-bold text-white text-xs">{cert.albaranIds.length} Entradas en báscula</span>
+                        <div className="flex items-center space-x-2 mt-0.5">
+                          <span className="font-bold text-white text-xs">{cert.albaranIds.length} Entradas</span>
+                          {cert.includePhotos === false ? (
+                            <span className="text-[10px] bg-sky-500/15 text-sky-400 border border-sky-500/30 px-1.5 py-0.2 rounded font-semibold">
+                              Listado sin fotos
+                            </span>
+                          ) : (
+                            <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded font-semibold">
+                              Con fotos
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] text-slate-400 block">Total Certificado:</span>
@@ -425,6 +436,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                         onClick={() =>
                           openPrintableCertificate(cert, {
                             isProvisionalPreview: true,
+                            includePhotos: cert.includePhotos !== false,
                           })
                         }
                         className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition"
@@ -453,6 +465,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                       onClick={() =>
                         openPrintableCertificate(cert, {
                           isProvisionalPreview: false,
+                          includePhotos: cert.includePhotos !== false,
                         })
                       }
                       className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition"
@@ -508,3 +521,4 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
     </div>
   );
 };
+
