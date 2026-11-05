@@ -5,6 +5,7 @@ export interface PrintableCertificateOptions {
   forSignature?: boolean; // When true, admin is downloading/printing to sign in Acrobat/AutoFirma/PC -> clean official signature box, NO red stamp
   isProvisionalPreview?: boolean; // When true (in client portal while pending), shows provisional draft warning
   albaranes?: Albaran[]; // Custom list of albaranes (or auto-loaded from storage)
+  includePhotos?: boolean; // When true (default), annex has 1 page per albaran with photos. When false, annex has tabular list without photos.
 }
 
 /**
@@ -120,7 +121,22 @@ export function openPrintableCertificate(
     }
   }
 
-  const totalPages = 1 + attachedAlbaranes.length;
+  const includePhotos = options?.includePhotos !== undefined
+    ? options.includePhotos
+    : (certificate.includePhotos !== false);
+
+  const ROWS_PER_ANNEX_PAGE = 14;
+  const annexChunks: Albaran[][] = [];
+  if (attachedAlbaranes.length === 0) {
+    annexChunks.push([]);
+  } else {
+    for (let i = 0; i < attachedAlbaranes.length; i += ROWS_PER_ANNEX_PAGE) {
+      annexChunks.push(attachedAlbaranes.slice(i, i + ROWS_PER_ANNEX_PAGE));
+    }
+  }
+
+  const totalAnnexPages = includePhotos ? attachedAlbaranes.length : annexChunks.length;
+  const totalPages = 1 + totalAnnexPages;
 
   const breakdownRows = certificate.wasteBreakdown
     .map(
@@ -194,159 +210,289 @@ export function openPrintableCertificate(
     `;
   }
 
-  // Generate Annex Pages (1 Page per Albarán)
-  const annexPagesHtml = attachedAlbaranes
-    .map((alb, index) => {
-      const pageNumber = index + 2;
-      const truckImg = alb.truckPhotoUrl && alb.truckPhotoUrl.startsWith('data:image') ? alb.truckPhotoUrl : '';
-      const unloadImg = alb.unloadPhotoUrl && alb.unloadPhotoUrl.startsWith('data:image') ? alb.unloadPhotoUrl : '';
+  // Generate Annex Pages
+  let annexPagesHtml = '';
 
-      return `
-      <!-- ANNEX PAGE ${index + 1} (ALBARÁN ${alb.numAlbaran}) -->
-      <div class="page-container page-break">
-        
-        <!-- Header Annex -->
-        <div class="annex-header">
-          <div>
-            <div class="title" style="font-size: 13px;">ÁRIDOS MARRAQUE S.L. — PLANTA DE VALORIZACIÓN Y RECICLAJE RCD</div>
-            <div class="subtitle" style="font-size: 9.5px;">NIMA Gestor (E02): 0400008639 | NIMA Centro (G04): 0400003843 | CIF: B04117818 | Rioja (Almería)</div>
+  if (includePhotos) {
+    // Mode 1: Photographic Annex (1 Page per Albarán with Scale & Unload Photos)
+    annexPagesHtml = attachedAlbaranes
+      .map((alb, index) => {
+        const pageNumber = index + 2;
+        const truckImg = alb.truckPhotoUrl && alb.truckPhotoUrl.startsWith('data:image') ? alb.truckPhotoUrl : '';
+        const unloadImg = alb.unloadPhotoUrl && alb.unloadPhotoUrl.startsWith('data:image') ? alb.unloadPhotoUrl : '';
+
+        return `
+        <!-- ANNEX PAGE ${index + 1} (ALBARÁN ${alb.numAlbaran}) -->
+        <div class="page-container page-break">
+          
+          <!-- Header Annex -->
+          <div class="annex-header">
+            <div>
+              <div class="title" style="font-size: 13px;">ÁRIDOS MARRAQUE S.L. — PLANTA DE VALORIZACIÓN Y RECICLAJE RCD</div>
+              <div class="subtitle" style="font-size: 9.5px;">NIMA Gestor (E02): 0400008639 | NIMA Centro (G04): 0400003843 | CIF: B04117818 | Rioja (Almería)</div>
+            </div>
+            <div style="text-align: right;">
+              <div class="cert-num" style="font-size: 12px; padding: 4px 10px;">ANEXO DOCUMENTAL ${index + 1} DE ${attachedAlbaranes.length}</div>
+              <div style="font-size: 9.5px; color: #64748B; margin-top: 3px; font-family: monospace;">Cert: ${certificate.certificateNumber}</div>
+            </div>
           </div>
-          <div style="text-align: right;">
-            <div class="cert-num" style="font-size: 12px; padding: 4px 10px;">ANEXO DOCUMENTAL ${index + 1} DE ${attachedAlbaranes.length}</div>
-            <div style="font-size: 9.5px; color: #64748B; margin-top: 3px; font-family: monospace;">Cert: ${certificate.certificateNumber}</div>
+
+          <!-- Banner Title -->
+          <div class="annex-title-bar">
+            <h3 style="margin: 0; font-size: 13px; text-transform: uppercase; color: #065F46;">
+              JUSTIFICANTE DE ENTRADA Y DESCARGA — ALBARÁN Nº <span style="font-family: monospace; color: #047857;">${alb.numAlbaran}</span>
+            </h3>
           </div>
+
+          <!-- Delivery Data Grid -->
+          <div class="section-box" style="margin-bottom: 12px; padding: 12px;">
+            <div class="grid-4">
+              <div>
+                <div class="field-label">Nº Albarán SAP</div>
+                <div class="field-value" style="font-family: monospace; color: #047857;">${alb.numAlbaran}</div>
+              </div>
+              <div>
+                <div class="field-label">Fecha y Hora</div>
+                <div class="field-value">${alb.date} ${alb.time}</div>
+              </div>
+              <div>
+                <div class="field-label">Matrícula Camión</div>
+                <div class="field-value" style="font-family: monospace; color: #D97706;">${alb.licensePlate || 'BÁSCULA-1'}</div>
+              </div>
+              <div>
+                <div class="field-label">Peso Neto (t)</div>
+                <div class="field-value" style="color: #047857; font-size: 14px;">${alb.quantityTons.toFixed(2)} t</div>
+              </div>
+            </div>
+
+            <div class="grid-2" style="margin-top: 10px; border-top: 1px solid #E2E8F0; padding-top: 8px;">
+              <div>
+                <div class="field-label">Cliente / Transportista</div>
+                <div class="field-value" style="font-size: 12px;">${alb.clientName}</div>
+              </div>
+              <div>
+                <div class="field-label">Residuo RCD (Código LER)</div>
+                <div class="field-value" style="font-size: 12px; color: #065F46;">LER ${alb.wasteTypeCode} - ${alb.wasteTypeName}</div>
+              </div>
+            </div>
+
+            <div class="grid-2" style="margin-top: 8px;">
+              <div>
+                <div class="field-label">Zona de Descarga en Planta</div>
+                <div class="field-value" style="font-size: 11px;">${alb.plantZone || 'Muelle A - Fosa de Triaje RCD'}</div>
+              </div>
+              <div>
+                <div class="field-label">Origen del Residuo (Datos Destino SAP)</div>
+                <div class="field-value" style="font-size: 11px; font-weight: bold; color: #065F46;">${alb.origin || 'Planta RCD'}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Photographic Evidence Section -->
+          <div class="section-box" style="padding: 12px; margin-bottom: 12px;">
+            <div class="section-title" style="margin-bottom: 10px; font-size: 11px;">
+              📸 REGISTRO FOTOGRÁFICO DE CONTROL Y CUSTODIA (EVIDENCIA DIGITAL SELLADA)
+            </div>
+
+            <div class="grid-2" style="gap: 12px;">
+              
+              <!-- Photo 1: Truck on Scale -->
+              <div class="photo-card">
+                <div class="photo-header">
+                  <span>🚛 FOTO 1: CAMIÓN EN BÁSCULA (MATRÍCULA)</span>
+                  <span class="badge-tag">VERIFICADO</span>
+                </div>
+                <div class="photo-container">
+                  ${
+                    truckImg
+                      ? `<img src="${truckImg}" alt="Foto Camión Báscula" class="photo-img" />`
+                      : `
+                      <div class="photo-placeholder">
+                        <div style="font-size: 24px; margin-bottom: 4px;">🚛</div>
+                        <div style="font-weight: bold; font-size: 12px; color: #047857; font-family: monospace;">MATRÍCULA: ${alb.licensePlate || '8492-KZX'}</div>
+                        <div style="font-size: 9px; color: #64748B; margin-top: 2px;">Control de Acceso y Pesaje Báscula #1</div>
+                        <div style="font-size: 8px; color: #94A3B8; margin-top: 2px;">Fecha: ${alb.date} ${alb.time} | 37.3891° N, 5.9845° W</div>
+                      </div>
+                    `
+                  }
+                </div>
+                <div class="photo-caption">
+                  Evidencia de pesaje y control visual de entrada. Matrícula: <strong>${alb.licensePlate || 'N/A'}</strong>.
+                </div>
+              </div>
+
+              <!-- Photo 2: Unload / Triaje -->
+              <div class="photo-card">
+                <div class="photo-header">
+                  <span>♻️ FOTO 2: DESCARGA EN PLANTA (TRIAJE)</span>
+                  <span class="badge-tag">VALORIZABLE</span>
+                </div>
+                <div class="photo-container">
+                  ${
+                    unloadImg
+                      ? `<img src="${unloadImg}" alt="Foto Descarga Planta" class="photo-img" />`
+                      : `
+                      <div class="photo-placeholder">
+                        <div style="font-size: 24px; margin-bottom: 4px;">🏗️</div>
+                        <div style="font-weight: bold; font-size: 12px; color: #065F46;">LER ${alb.wasteTypeCode}</div>
+                        <div style="font-size: 9px; color: #64748B; margin-top: 2px;">${alb.plantZone || 'Fosa de Triaje RCD'}</div>
+                        <div style="font-size: 8px; color: #94A3B8; margin-top: 2px;">Descarga Registrada | Peso: ${alb.quantityTons.toFixed(2)} t</div>
+                      </div>
+                    `
+                  }
+                </div>
+                <div class="photo-caption">
+                  Evidencia de descarga y triaje en <strong>${alb.plantZone || 'Muelle A'}</strong> (${alb.quantityTons.toFixed(2)} t).
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Annex Footer -->
+          <div class="annex-footer">
+            <div>
+              <span>Certificado Nº: <strong>${certificate.certificateNumber}</strong></span>
+              <span style="margin: 0 8px;">|</span>
+              <span>CSV: <strong style="font-family: monospace;">${certificate.verificationCode}</strong></span>
+              <span style="margin: 0 8px;">|</span>
+              <span>Promotor: <strong>${certificate.thirdPartyName}</strong></span>
+            </div>
+            <div style="font-weight: bold; color: #047857;">
+              Página ${pageNumber} de ${totalPages}
+            </div>
+          </div>
+
         </div>
+        `;
+      })
+      .join('');
+  } else {
+    // Mode 2: Tabular Annex Without Photos (Consolidated List of Entries with Full Albarán Info)
+    annexPagesHtml = annexChunks
+      .map((chunk, chunkIndex) => {
+        const pageNumber = chunkIndex + 2;
+        const isLastChunk = chunkIndex === annexChunks.length - 1;
+        const startIndex = chunkIndex * ROWS_PER_ANNEX_PAGE;
 
-        <!-- Banner Title -->
-        <div class="annex-title-bar">
-          <h3 style="margin: 0; font-size: 13px; text-transform: uppercase; color: #065F46;">
-            JUSTIFICANTE DE ENTRADA Y DESCARGA — ALBARÁN Nº <span style="font-family: monospace; color: #047857;">${alb.numAlbaran}</span>
-          </h3>
+        const rowsHtml = chunk
+          .map((alb, idx) => {
+            const itemNumber = startIndex + idx + 1;
+            const originDisplay = alb.origin || 'Planta RCD';
+            return `
+            <tr style="background: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'};">
+              <td style="padding: 6px 6px; border: 1px solid #CBD5E1; text-align: center; color: #64748B; font-size: 10px;">${itemNumber}</td>
+              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-family: monospace; font-weight: bold; color: #047857; font-size: 11px;">${alb.numAlbaran}</td>
+              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-size: 10.5px; white-space: nowrap;">${alb.date} ${alb.time || ''}</td>
+              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-family: monospace; font-weight: bold; color: #B45309; font-size: 10.5px;">${alb.licensePlate || 'BÁSCULA-1'}</td>
+              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-family: monospace; font-weight: bold; font-size: 10px; color: #065F46;">${alb.wasteTypeCode}</td>
+              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-size: 10.5px; color: #1E293B;">${alb.wasteTypeName}</td>
+              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-size: 10px; color: #475569;">${alb.plantZone || 'Fosa de Triaje RCD'}</td>
+              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-size: 10px; color: #065F46; font-weight: bold;">${originDisplay}</td>
+              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; text-align: right; font-weight: bold; color: #047857; font-size: 11px; white-space: nowrap;">${alb.quantityTons.toFixed(2)} t</td>
+            </tr>
+          `;
+          })
+          .join('');
+
+        return `
+        <!-- ANNEX DOCUMENTAL PAGE ${chunkIndex + 1} (LISTADO SIN FOTOS) -->
+        <div class="page-container page-break">
+          
+          <!-- Annex Header -->
+          <div class="annex-header">
+            <div>
+              <div class="title" style="font-size: 13px;">ÁRIDOS MARRAQUE S.L. — PLANTA DE VALORIZACIÓN Y RECICLAJE RCD</div>
+              <div class="subtitle" style="font-size: 9.5px;">NIMA Gestor (E02): 0400008639 | NIMA Centro (G04): 0400003843 | CIF: B04117818 | Rioja (Almería)</div>
+            </div>
+            <div style="text-align: right;">
+              <div class="cert-num" style="font-size: 11px; padding: 4px 10px;">ANEXO DOCUMENTAL — LISTADO DE ENTRADAS ${totalAnnexPages > 1 ? `(${chunkIndex + 1}/${totalAnnexPages})` : ''}</div>
+              <div style="font-size: 9px; color: #64748B; margin-top: 3px; font-family: monospace;">Cert: ${certificate.certificateNumber}</div>
+            </div>
+          </div>
+
+          <!-- Banner Title -->
+          <div class="annex-title-bar">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <h3 style="margin: 0; font-size: 12.5px; text-transform: uppercase; color: #065F46;">
+                  RELACIÓN DETALLADA DE ALBARANES DE ENTRADA Y PESAJE EN BÁSCULA (SIN FOTOGRAFÍAS)
+                </h3>
+                <div style="font-size: 10px; color: #475569; margin-top: 2px;">
+                  Promotor: <strong>${certificate.thirdPartyName}</strong> (${certificate.thirdPartyCif}) — Obra: <strong>${certificate.constructionSiteName}</strong>
+                </div>
+              </div>
+              <span style="font-size: 10px; background: #047857; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold; white-space: nowrap;">
+                ${attachedAlbaranes.length} ENTRADAS | ${certificate.totalTons.toFixed(2)} t
+              </span>
+            </div>
+          </div>
+
+          <!-- Table of Delivery Notes -->
+          <table style="width: 100%; border-collapse: collapse; margin-top: 6px;">
+            <thead>
+              <tr style="background: #1E293B; color: #FFFFFF; font-size: 9.5px; text-transform: uppercase;">
+                <th style="padding: 7px 6px; border: 1px solid #334155; width: 28px; text-align: center;">#</th>
+                <th style="padding: 7px 6px; border: 1px solid #334155; width: 95px;">Nº Albarán SAP</th>
+                <th style="padding: 7px 6px; border: 1px solid #334155; width: 90px;">Fecha / Hora</th>
+                <th style="padding: 7px 6px; border: 1px solid #334155; width: 80px;">Matrícula</th>
+                <th style="padding: 7px 6px; border: 1px solid #334155; width: 65px;">Código LER</th>
+                <th style="padding: 7px 6px; border: 1px solid #334155;">Denominación Residuo RCD</th>
+                <th style="padding: 7px 6px; border: 1px solid #334155; width: 110px;">Zona Planta</th>
+                <th style="padding: 7px 6px; border: 1px solid #334155; width: 125px;">Origen (Destino SAP)</th>
+                <th style="padding: 7px 6px; border: 1px solid #334155; width: 75px; text-align: right;">Peso Neto</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+            ${
+              isLastChunk
+                ? `
+                <tfoot>
+                  <tr style="background: #ECFDF5; font-size: 11px;">
+                    <td colspan="8" style="padding: 8px 10px; font-weight: bold; text-align: right; border: 1px solid #A7F3D0; color: #065F46;">
+                      TOTAL RESIDUOS CERTIFICADOS (${attachedAlbaranes.length} ALBARANES):
+                    </td>
+                    <td style="padding: 8px 10px; font-weight: bold; text-align: right; color: #047857; border: 1px solid #A7F3D0; font-size: 12px; white-space: nowrap;">
+                      ${certificate.totalTons.toFixed(2)} t
+                    </td>
+                  </tr>
+                </tfoot>
+                `
+                : ''
+            }
+          </table>
+
+          ${
+            isLastChunk
+              ? `
+              <div style="margin-top: 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #059669; padding: 8px 12px; font-size: 9.5px; color: #334155; border-radius: 0 4px 4px 0; line-height: 1.45;">
+                ⚖️ <strong>DILIGENCIA DE PESAJE Y ENTRADA:</strong> Se hace constar que los ${attachedAlbaranes.length} albaranes reseñados corresponden a descargas reales registradas en báscula informatizada y homologada en el centro de reciclaje de Áridos Marraque S.L., con custodia documental verificable mediante el Código Seguro de Verificación (CSV).
+              </div>
+              `
+              : ''
+          }
+
+          <!-- Annex Footer -->
+          <div class="annex-footer" style="margin-top: 16px;">
+            <div>
+              <span>Certificado Nº: <strong>${certificate.certificateNumber}</strong></span>
+              <span style="margin: 0 8px;">|</span>
+              <span>CSV: <strong style="font-family: monospace;">${certificate.verificationCode}</strong></span>
+              <span style="margin: 0 8px;">|</span>
+              <span>Promotor: <strong>${certificate.thirdPartyName}</strong></span>
+            </div>
+            <div style="font-weight: bold; color: #047857;">
+              Página ${pageNumber} de ${totalPages}
+            </div>
+          </div>
+
         </div>
-
-        <!-- Delivery Data Grid -->
-        <div class="section-box" style="margin-bottom: 12px; padding: 12px;">
-          <div class="grid-4">
-            <div>
-              <div class="field-label">Nº Albarán SAP</div>
-              <div class="field-value" style="font-family: monospace; color: #047857;">${alb.numAlbaran}</div>
-            </div>
-            <div>
-              <div class="field-label">Fecha y Hora</div>
-              <div class="field-value">${alb.date} ${alb.time}</div>
-            </div>
-            <div>
-              <div class="field-label">Matrícula Camión</div>
-              <div class="field-value" style="font-family: monospace; color: #D97706;">${alb.licensePlate || 'BÁSCULA-1'}</div>
-            </div>
-            <div>
-              <div class="field-label">Peso Neto (t)</div>
-              <div class="field-value" style="color: #047857; font-size: 14px;">${alb.quantityTons.toFixed(2)} t</div>
-            </div>
-          </div>
-
-          <div class="grid-2" style="margin-top: 10px; border-top: 1px solid #E2E8F0; padding-top: 8px;">
-            <div>
-              <div class="field-label">Cliente / Transportista</div>
-              <div class="field-value" style="font-size: 12px;">${alb.clientName}</div>
-            </div>
-            <div>
-              <div class="field-label">Residuo RCD (Código LER)</div>
-              <div class="field-value" style="font-size: 12px; color: #065F46;">LER ${alb.wasteTypeCode} - ${alb.wasteTypeName}</div>
-            </div>
-          </div>
-
-          <div class="grid-2" style="margin-top: 8px;">
-            <div>
-              <div class="field-label">Zona de Descarga en Planta</div>
-              <div class="field-value" style="font-size: 11px;">${alb.plantZone || 'Muelle A - Fosa de Triaje RCD'}</div>
-            </div>
-            <div>
-              <div class="field-label">Origen del Residuo (Datos Destino SAP)</div>
-              <div class="field-value" style="font-size: 11px; font-weight: bold; color: #065F46;">${alb.origin || 'Planta RCD'}</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Photographic Evidence Section -->
-        <div class="section-box" style="padding: 12px; margin-bottom: 12px;">
-          <div class="section-title" style="margin-bottom: 10px; font-size: 11px;">
-            📸 REGISTRO FOTOGRÁFICO DE CONTROL Y CUSTODIA (EVIDENCIA DIGITAL SELLADA)
-          </div>
-
-          <div class="grid-2" style="gap: 12px;">
-            
-            <!-- Photo 1: Truck on Scale -->
-            <div class="photo-card">
-              <div class="photo-header">
-                <span>🚛 FOTO 1: CAMIÓN EN BÁSCULA (MATRÍCULA)</span>
-                <span class="badge-tag">VERIFICADO</span>
-              </div>
-              <div class="photo-container">
-                ${
-                  truckImg
-                    ? `<img src="${truckImg}" alt="Foto Camión Báscula" class="photo-img" />`
-                    : `
-                    <div class="photo-placeholder">
-                      <div style="font-size: 24px; margin-bottom: 4px;">🚛</div>
-                      <div style="font-weight: bold; font-size: 12px; color: #047857; font-family: monospace;">MATRÍCULA: ${alb.licensePlate || '8492-KZX'}</div>
-                      <div style="font-size: 9px; color: #64748B; margin-top: 2px;">Control de Acceso y Pesaje Báscula #1</div>
-                      <div style="font-size: 8px; color: #94A3B8; margin-top: 2px;">Fecha: ${alb.date} ${alb.time} | 37.3891° N, 5.9845° W</div>
-                    </div>
-                  `
-                }
-              </div>
-              <div class="photo-caption">
-                Evidencia de pesaje y control visual de entrada. Matrícula: <strong>${alb.licensePlate || 'N/A'}</strong>.
-              </div>
-            </div>
-
-            <!-- Photo 2: Unload / Triaje -->
-            <div class="photo-card">
-              <div class="photo-header">
-                <span>♻️ FOTO 2: DESCARGA EN PLANTA (TRIAJE)</span>
-                <span class="badge-tag">VALORIZABLE</span>
-              </div>
-              <div class="photo-container">
-                ${
-                  unloadImg
-                    ? `<img src="${unloadImg}" alt="Foto Descarga Planta" class="photo-img" />`
-                    : `
-                    <div class="photo-placeholder">
-                      <div style="font-size: 24px; margin-bottom: 4px;">🏗️</div>
-                      <div style="font-weight: bold; font-size: 12px; color: #065F46;">LER ${alb.wasteTypeCode}</div>
-                      <div style="font-size: 9px; color: #64748B; margin-top: 2px;">${alb.plantZone || 'Fosa de Triaje RCD'}</div>
-                      <div style="font-size: 8px; color: #94A3B8; margin-top: 2px;">Descarga Registrada | Peso: ${alb.quantityTons.toFixed(2)} t</div>
-                    </div>
-                  `
-                }
-              </div>
-              <div class="photo-caption">
-                Evidencia de descarga y triaje en <strong>${alb.plantZone || 'Muelle A'}</strong> (${alb.quantityTons.toFixed(2)} t).
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        <!-- Annex Footer -->
-        <div class="annex-footer">
-          <div>
-            <span>Certificado Nº: <strong>${certificate.certificateNumber}</strong></span>
-            <span style="margin: 0 8px;">|</span>
-            <span>CSV: <strong style="font-family: monospace;">${certificate.verificationCode}</strong></span>
-            <span style="margin: 0 8px;">|</span>
-            <span>Promotor: <strong>${certificate.thirdPartyName}</strong></span>
-          </div>
-          <div style="font-weight: bold; color: #047857;">
-            Página ${pageNumber} de ${totalPages}
-          </div>
-        </div>
-
-      </div>
-      `;
-    })
-    .join('');
+        `;
+      })
+      .join('');
+  }
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -590,7 +736,7 @@ export function openPrintableCertificate(
     </head>
     <body>
       <button class="print-btn" onclick="window.print()">
-        🖨️ Imprimir / Guardar como PDF (${totalPages} págs.)
+        🖨️ Imprimir / Guardar como PDF (${totalPages} ${totalPages === 1 ? 'pág.' : 'págs.'}${includePhotos ? ' • Con fotos' : ' • Listado sin fotos'})
       </button>
 
       <!-- ================= PAGE 1: OFFICIAL CERTIFICATE SUMMARY ================= -->
@@ -678,7 +824,11 @@ export function openPrintableCertificate(
         </div>
 
         <div style="font-size: 9.5px; color: #475569; margin-top: 8px; background: #F8FAFC; padding: 8px 12px; border: 1px solid #E2E8F0; border-radius: 4px; line-height: 1.4;">
-          🔒 <strong>TRAZABILIDAD E INMUTABILIDAD:</strong> Las <strong>${attachedAlbaranes.length} entradas de descarga</strong> acreditadas en este certificado quedan vinculadas y selladas de forma inmutable. En las páginas siguientes (${2} a ${totalPages}) se adjuntan los <strong>anexos fotográficos y justificantes de pesaje de cada camión</strong>.
+          🔒 <strong>TRAZABILIDAD E INMUTABILIDAD:</strong> Las <strong>${attachedAlbaranes.length} entradas de descarga</strong> acreditadas en este certificado quedan vinculadas y selladas de forma inmutable. ${
+            includePhotos
+              ? `En las páginas siguientes (${2} a ${totalPages}) se adjuntan los <strong>anexos fotográficos y justificantes de pesaje de cada camión</strong>.`
+              : `En ${totalAnnexPages === 1 ? 'la página siguiente' : `las páginas siguientes (${2} a ${totalPages})`} se adjunta el <strong>anexo documental con la relación detallada de albaranes de entrada y pesajes en báscula</strong>.`
+          }
         </div>
 
         <!-- Footer / Signature Block -->
