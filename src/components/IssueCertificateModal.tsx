@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Lock, AlertTriangle, FileText, Check, X, Building2, MapPin } from 'lucide-react';
+import { ShieldCheck, Lock, AlertTriangle, FileText, Check, X, Building2, MapPin, Camera, CheckCircle2 } from 'lucide-react';
 import { Albaran, Certificate, Client } from '../types/rcd';
 import { RCDService } from '../services/rcdStorage';
 import { openPrintableCertificate } from '../utils/certificatePdf';
@@ -25,6 +25,7 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
   const [constructionSiteName, setConstructionSiteName] = useState('Residencial Vista Verde - 32 Viviendas');
   const [constructionSiteAddress, setConstructionSiteAddress] = useState('Avda. Federico García Lorca, Almería');
   const [issuerName, setIssuerName] = useState('Áridos Marraque S.L.');
+  const [includePhotos, setIncludePhotos] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
@@ -74,12 +75,13 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
         constructionSiteAddress: constructionSiteAddress.trim(),
         selectedAlbaranIds: selectedIds,
         issuerName: issuerName.trim(),
+        includePhotos: includePhotos,
       });
 
       onCertificateCreated(createdCert);
       
-      // Auto open printable PDF document
-      openPrintableCertificate(createdCert);
+      // Auto open printable PDF document respecting chosen mode
+      openPrintableCertificate(createdCert, { includePhotos });
       
       onClose();
     } catch (err: any) {
@@ -181,6 +183,103 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
                   className="w-full bg-slate-900 text-white text-xs border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none"
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Section: ¿Incluir fotos de las descargas? */}
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2">
+              <div className="flex items-center space-x-2">
+                <Camera className="w-4 h-4 text-emerald-400" />
+                <h4 className="font-bold text-white text-xs uppercase tracking-wider">
+                  ¿Incluir fotos de las descargas?
+                </h4>
+              </div>
+
+              {/* Tick Checkbox control */}
+              <label className="inline-flex items-center space-x-2 cursor-pointer bg-slate-900 hover:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700/80 transition select-none self-start sm:self-auto">
+                <input
+                  type="checkbox"
+                  id="includePhotosTick"
+                  checked={includePhotos}
+                  onChange={(e) => setIncludePhotos(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-600 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                />
+                <span className="text-xs font-semibold text-slate-200">
+                  {includePhotos ? '✓ Tick marcado (Con fotos)' : '✗ Tick desmarcado (Sin fotos)'}
+                </span>
+              </label>
+            </div>
+
+            {/* Visual Tabs / Options */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              {/* Tab 1: Con fotos */}
+              <button
+                type="button"
+                onClick={() => setIncludePhotos(true)}
+                className={`p-3 rounded-xl border text-left transition flex items-start space-x-3 cursor-pointer ${
+                  includePhotos
+                    ? 'bg-emerald-950/40 border-emerald-500/60 shadow-lg shadow-emerald-950/30 ring-1 ring-emerald-500/30'
+                    : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-900 hover:border-slate-700 opacity-70'
+                }`}
+              >
+                <div
+                  className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                    includePhotos ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className={`text-xs font-bold ${includePhotos ? 'text-emerald-300' : 'text-slate-300'}`}>
+                      Con fotos de descargas
+                    </span>
+                    {includePhotos && (
+                      <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.2 rounded font-bold border border-emerald-500/30">
+                        Seleccionado
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                    Genera el <strong>certificado oficial actual</strong> con 1 página por albarán y 2 fotografías selladas (pesaje en báscula y descarga en planta).
+                  </p>
+                </div>
+              </button>
+
+              {/* Tab 2: Sin fotos */}
+              <button
+                type="button"
+                onClick={() => setIncludePhotos(false)}
+                className={`p-3 rounded-xl border text-left transition flex items-start space-x-3 cursor-pointer ${
+                  !includePhotos
+                    ? 'bg-sky-950/40 border-sky-500/60 shadow-lg shadow-sky-950/30 ring-1 ring-sky-500/30'
+                    : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-900 hover:border-slate-700 opacity-70'
+                }`}
+              >
+                <div
+                  className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                    !includePhotos ? 'bg-sky-500/20 text-sky-400' : 'bg-slate-800 text-slate-500'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className={`text-xs font-bold ${!includePhotos ? 'text-sky-300' : 'text-slate-300'}`}>
+                      Sin fotos (Listado de entradas)
+                    </span>
+                    {!includePhotos && (
+                      <span className="bg-sky-500/20 text-sky-400 text-[10px] px-1.5 py-0.2 rounded font-bold border border-sky-500/30">
+                        Seleccionado
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                    Genera un <strong>anexo con listado consolidado</strong> de entradas sin fotos, con Nº albarán SAP, fecha/hora, matrícula, LER, peso y origen del residuo.
+                  </p>
+                </div>
+              </button>
             </div>
           </div>
 
@@ -291,7 +390,11 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
             className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-extrabold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 flex items-center space-x-2 text-xs sm:text-sm transition"
           >
             <ShieldCheck className="w-4 h-4" />
-            <span>Emitir Certificado e Imprimir PDF</span>
+            <span>
+              {includePhotos
+                ? 'Emitir Certificado con Fotos'
+                : 'Emitir Certificado (Listado sin Fotos)'}
+            </span>
           </button>
         </div>
 
