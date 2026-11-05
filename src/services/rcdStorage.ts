@@ -1121,6 +1121,7 @@ export class RCDService {
     constructionSiteAddress: string;
     selectedAlbaranIds: string[];
     issuerName: string;
+    includePhotos?: boolean;
   }): Promise<Certificate> {
     const allAlbaranes = this.getAlbaranes();
 
@@ -1178,6 +1179,7 @@ export class RCDService {
       issuerName: payload.issuerName || 'Administrador Planta RCD',
       verificationCode: `VERIF-2026-RCD-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
       status: 'Pendiente de Firma',
+      includePhotos: payload.includePhotos !== undefined ? payload.includePhotos : true,
     };
 
     // LOCK the albaranes in local state
@@ -1347,6 +1349,7 @@ export class RCDService {
       selectedAlbaranIds: string[];
       issuerName?: string;
       resetSignatureIfSigned?: boolean;
+      includePhotos?: boolean;
     }
   ): Promise<Certificate> {
     const certs = this.getCertificates();
@@ -1452,6 +1455,7 @@ export class RCDService {
       constructionSiteName: payload.constructionSiteName.trim(),
       constructionSiteAddress: (payload.constructionSiteAddress || '').trim(),
       issuerName: payload.issuerName?.trim() || currentCert.issuerName,
+      includePhotos: payload.includePhotos !== undefined ? payload.includePhotos : (currentCert.includePhotos !== false),
       albaranIds: selectedAlbaranes.map((a) => a.id),
       wasteBreakdown,
       totalTons: Number(totalTons.toFixed(2)),
