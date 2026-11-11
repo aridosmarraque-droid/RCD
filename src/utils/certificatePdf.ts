@@ -125,7 +125,7 @@ export function openPrintableCertificate(
     ? options.includePhotos
     : (certificate.includePhotos !== false);
 
-  const ROWS_PER_ANNEX_PAGE = 10;
+  const ROWS_PER_ANNEX_PAGE = 20;
   const annexChunks: Albaran[][] = [];
   if (attachedAlbaranes.length === 0) {
     annexChunks.push([]);
