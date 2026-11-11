@@ -125,7 +125,7 @@ export function openPrintableCertificate(
     ? options.includePhotos
     : (certificate.includePhotos !== false);
 
-  const ROWS_PER_ANNEX_PAGE = 14;
+  const ROWS_PER_ANNEX_PAGE = 10;
   const annexChunks: Albaran[][] = [];
   if (attachedAlbaranes.length === 0) {
     annexChunks.push([]);
@@ -378,18 +378,26 @@ export function openPrintableCertificate(
         const rowsHtml = chunk
           .map((alb, idx) => {
             const itemNumber = startIndex + idx + 1;
-            const originDisplay = alb.origin || 'Planta RCD';
+            const originDisplay = alb.origin && alb.origin.trim() ? alb.origin.trim() : 'Planta RCD';
             return `
             <tr style="background: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'};">
-              <td style="padding: 6px 6px; border: 1px solid #CBD5E1; text-align: center; color: #64748B; font-size: 10px;">${itemNumber}</td>
-              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-family: monospace; font-weight: bold; color: #047857; font-size: 11px;">${alb.numAlbaran}</td>
-              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-size: 10.5px; white-space: nowrap;">${alb.date} ${alb.time || ''}</td>
-              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-family: monospace; font-weight: bold; color: #B45309; font-size: 10.5px;">${alb.licensePlate || 'BÁSCULA-1'}</td>
-              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-family: monospace; font-weight: bold; font-size: 10px; color: #065F46;">${alb.wasteTypeCode}</td>
-              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-size: 10.5px; color: #1E293B;">${alb.wasteTypeName}</td>
-              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-size: 10px; color: #475569;">${alb.plantZone || 'Fosa de Triaje RCD'}</td>
-              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; font-size: 10px; color: #065F46; font-weight: bold;">${originDisplay}</td>
-              <td style="padding: 6px 8px; border: 1px solid #CBD5E1; text-align: right; font-weight: bold; color: #047857; font-size: 11px; white-space: nowrap;">${alb.quantityTons.toFixed(2)} t</td>
+              <td style="padding: 4px 5px; border: 1px solid #CBD5E1; text-align: center; color: #64748B; font-size: 9px; white-space: nowrap;">${itemNumber}</td>
+              <td style="padding: 4px 6px; border: 1px solid #CBD5E1; font-family: monospace; font-weight: bold; color: #047857; font-size: 10px; white-space: nowrap;">${alb.numAlbaran}</td>
+              <td style="padding: 4px 6px; border: 1px solid #CBD5E1; font-size: 9.5px; white-space: nowrap;">${alb.date} ${alb.time || ''}</td>
+              <td style="padding: 4px 6px; border: 1px solid #CBD5E1; font-family: monospace; font-weight: bold; color: #B45309; font-size: 9.5px; white-space: nowrap;">${alb.licensePlate || 'BÁSCULA-1'}</td>
+              <td style="padding: 4px 6px; border: 1px solid #CBD5E1; font-family: monospace; font-weight: bold; font-size: 9.5px; color: #065F46; white-space: nowrap;">${alb.wasteTypeCode}</td>
+              <td style="padding: 4px 6px; border: 1px solid #CBD5E1; font-size: 9.5px; color: #1E293B; line-height: 1.25;">
+                <div style="max-height: 25px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+                  ${alb.wasteTypeName || 'Residuo de Construcción y Demolición'}
+                </div>
+              </td>
+              <td style="padding: 4px 6px; border: 1px solid #CBD5E1; font-size: 9px; color: #475569; white-space: nowrap;">${alb.plantZone || 'Fosa de Triaje RCD'}</td>
+              <td style="padding: 4px 6px; border: 1px solid #CBD5E1; font-size: 9px; color: #065F46; font-weight: 600; line-height: 1.25;">
+                <div style="max-height: 25px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;" title="${originDisplay.replace(/"/g, '&quot;')}">
+                  ${originDisplay}
+                </div>
+              </td>
+              <td style="padding: 4px 6px; border: 1px solid #CBD5E1; text-align: right; font-weight: bold; color: #047857; font-size: 10px; white-space: nowrap;">${alb.quantityTons.toFixed(2)} t</td>
             </tr>
           `;
           })
@@ -399,15 +407,15 @@ export function openPrintableCertificate(
         <!-- ANNEX DOCUMENTAL PAGE ${chunkIndex + 1} (LISTADO SIN FOTOS) -->
         <div class="page-container page-break">
           
-          <!-- Annex Header -->
+          <!-- Annex Header (Identificativo en cada hoja) -->
           <div class="annex-header">
             <div>
-              <div class="title" style="font-size: 13px;">ÁRIDOS MARRAQUE S.L. — PLANTA DE VALORIZACIÓN Y RECICLAJE RCD</div>
-              <div class="subtitle" style="font-size: 9.5px;">NIMA Gestor (E02): 0400008639 | NIMA Centro (G04): 0400003843 | CIF: B04117818 | Rioja (Almería)</div>
+              <div class="title" style="font-size: 12.5px;">ÁRIDOS MARRAQUE S.L. — PLANTA DE VALORIZACIÓN Y RECICLAJE RCD</div>
+              <div class="subtitle" style="font-size: 9px;">NIMA Gestor (E02): 0400008639 | NIMA Centro (G04): 0400003843 | CIF: B04117818 | Rioja (Almería)</div>
             </div>
             <div style="text-align: right;">
-              <div class="cert-num" style="font-size: 11px; padding: 4px 10px;">ANEXO DOCUMENTAL — LISTADO DE ENTRADAS ${totalAnnexPages > 1 ? `(${chunkIndex + 1}/${totalAnnexPages})` : ''}</div>
-              <div style="font-size: 9px; color: #64748B; margin-top: 3px; font-family: monospace;">Cert: ${certificate.certificateNumber}</div>
+              <div class="cert-num" style="font-size: 11px; padding: 3px 8px;">ANEXO DOCUMENTAL — HOJA ${chunkIndex + 1} DE ${totalAnnexPages}</div>
+              <div style="font-size: 8.5px; color: #64748B; margin-top: 2px; font-family: monospace;">Cert: ${certificate.certificateNumber}</div>
             </div>
           </div>
 
@@ -415,32 +423,32 @@ export function openPrintableCertificate(
           <div class="annex-title-bar">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div>
-                <h3 style="margin: 0; font-size: 12.5px; text-transform: uppercase; color: #065F46;">
+                <h3 style="margin: 0; font-size: 11.5px; text-transform: uppercase; color: #065F46;">
                   RELACIÓN DETALLADA DE ALBARANES DE ENTRADA Y PESAJE EN BÁSCULA (SIN FOTOGRAFÍAS)
                 </h3>
-                <div style="font-size: 10px; color: #475569; margin-top: 2px;">
+                <div style="font-size: 9.5px; color: #475569; margin-top: 2px;">
                   Promotor: <strong>${certificate.thirdPartyName}</strong> (${certificate.thirdPartyCif}) — Obra: <strong>${certificate.constructionSiteName}</strong>
                 </div>
               </div>
-              <span style="font-size: 10px; background: #047857; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold; white-space: nowrap;">
-                ${attachedAlbaranes.length} ENTRADAS | ${certificate.totalTons.toFixed(2)} t
+              <span style="font-size: 9.5px; background: #047857; color: white; padding: 2.5px 8px; border-radius: 4px; font-weight: bold; white-space: nowrap;">
+                ENTRADAS ${startIndex + 1} A ${Math.min(startIndex + ROWS_PER_ANNEX_PAGE, attachedAlbaranes.length)} DE ${attachedAlbaranes.length} | TOTAL: ${certificate.totalTons.toFixed(2)} t
               </span>
             </div>
           </div>
 
           <!-- Table of Delivery Notes -->
-          <table style="width: 100%; border-collapse: collapse; margin-top: 6px;">
+          <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
             <thead>
-              <tr style="background: #1E293B; color: #FFFFFF; font-size: 9.5px; text-transform: uppercase;">
-                <th style="padding: 7px 6px; border: 1px solid #334155; width: 28px; text-align: center;">#</th>
-                <th style="padding: 7px 6px; border: 1px solid #334155; width: 95px;">Nº Albarán SAP</th>
-                <th style="padding: 7px 6px; border: 1px solid #334155; width: 90px;">Fecha / Hora</th>
-                <th style="padding: 7px 6px; border: 1px solid #334155; width: 80px;">Matrícula</th>
-                <th style="padding: 7px 6px; border: 1px solid #334155; width: 65px;">Código LER</th>
-                <th style="padding: 7px 6px; border: 1px solid #334155;">Denominación Residuo RCD</th>
-                <th style="padding: 7px 6px; border: 1px solid #334155; width: 110px;">Zona Planta</th>
-                <th style="padding: 7px 6px; border: 1px solid #334155; width: 125px;">Origen (Destino SAP)</th>
-                <th style="padding: 7px 6px; border: 1px solid #334155; width: 75px; text-align: right;">Peso Neto</th>
+              <tr style="background: #1E293B; color: #FFFFFF; font-size: 9px; text-transform: uppercase;">
+                <th style="padding: 5px 4px; border: 1px solid #334155; width: 26px; text-align: center;">#</th>
+                <th style="padding: 5px 6px; border: 1px solid #334155; width: 88px; white-space: nowrap;">Nº Albarán SAP</th>
+                <th style="padding: 5px 6px; border: 1px solid #334155; width: 85px; white-space: nowrap;">Fecha / Hora</th>
+                <th style="padding: 5px 6px; border: 1px solid #334155; width: 75px; white-space: nowrap;">Matrícula</th>
+                <th style="padding: 5px 6px; border: 1px solid #334155; width: 68px; white-space: nowrap;">Código LER</th>
+                <th style="padding: 5px 6px; border: 1px solid #334155;">Denominación Residuo RCD</th>
+                <th style="padding: 5px 6px; border: 1px solid #334155; width: 95px; white-space: nowrap;">Zona Planta</th>
+                <th style="padding: 5px 6px; border: 1px solid #334155; width: 130px;">Origen (Destino SAP)</th>
+                <th style="padding: 5px 6px; border: 1px solid #334155; width: 70px; text-align: right; white-space: nowrap;">Peso Neto</th>
               </tr>
             </thead>
             <tbody>
@@ -450,11 +458,11 @@ export function openPrintableCertificate(
               isLastChunk
                 ? `
                 <tfoot>
-                  <tr style="background: #ECFDF5; font-size: 11px;">
-                    <td colspan="8" style="padding: 8px 10px; font-weight: bold; text-align: right; border: 1px solid #A7F3D0; color: #065F46;">
+                  <tr style="background: #ECFDF5; font-size: 10px;">
+                    <td colspan="8" style="padding: 6px 8px; font-weight: bold; text-align: right; border: 1px solid #A7F3D0; color: #065F46;">
                       TOTAL RESIDUOS CERTIFICADOS (${attachedAlbaranes.length} ALBARANES):
                     </td>
-                    <td style="padding: 8px 10px; font-weight: bold; text-align: right; color: #047857; border: 1px solid #A7F3D0; font-size: 12px; white-space: nowrap;">
+                    <td style="padding: 6px 8px; font-weight: bold; text-align: right; color: #047857; border: 1px solid #A7F3D0; font-size: 11px; white-space: nowrap;">
                       ${certificate.totalTons.toFixed(2)} t
                     </td>
                   </tr>
@@ -467,7 +475,7 @@ export function openPrintableCertificate(
           ${
             isLastChunk
               ? `
-              <div style="margin-top: 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #059669; padding: 8px 12px; font-size: 9.5px; color: #334155; border-radius: 0 4px 4px 0; line-height: 1.45;">
+              <div style="margin-top: 10px; background: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #059669; padding: 6px 10px; font-size: 9px; color: #334155; border-radius: 0 4px 4px 0; line-height: 1.4;">
                 ⚖️ <strong>DILIGENCIA DE PESAJE Y ENTRADA:</strong> Se hace constar que los ${attachedAlbaranes.length} albaranes reseñados corresponden a descargas reales registradas en báscula informatizada y homologada en el centro de reciclaje de Áridos Marraque S.L., con custodia documental verificable mediante el Código Seguro de Verificación (CSV).
               </div>
               `
@@ -475,7 +483,7 @@ export function openPrintableCertificate(
           }
 
           <!-- Annex Footer -->
-          <div class="annex-footer" style="margin-top: 16px;">
+          <div class="annex-footer" style="margin-top: 12px;">
             <div>
               <span>Certificado Nº: <strong>${certificate.certificateNumber}</strong></span>
               <span style="margin: 0 8px;">|</span>
@@ -501,6 +509,10 @@ export function openPrintableCertificate(
       <meta charset="UTF-8" />
       <title>Certificado RCD - ${certificate.certificateNumber}</title>
       <style>
+        @page {
+          size: A4 portrait;
+          margin: 8mm 10mm 8mm 10mm;
+        }
         * {
           box-sizing: border-box;
         }
@@ -509,15 +521,20 @@ export function openPrintableCertificate(
           margin: 0;
           padding: 0;
           color: #0F172A;
-          background: #FFFFFF;
+          background: #F1F5F9;
           font-size: 12px;
           line-height: 1.4;
         }
         .page-container {
-          padding: 30px 36px;
-          min-height: 100vh;
+          padding: 24px 28px;
+          max-width: 960px;
+          margin: 0 auto 20px auto;
           position: relative;
           background: #FFFFFF;
+          box-sizing: border-box;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
         .header {
           display: flex;
@@ -660,7 +677,7 @@ export function openPrintableCertificate(
           font-weight: bold;
         }
         .photo-container {
-          height: 190px;
+          height: 170px;
           background: #0F172A;
           display: flex;
           align-items: center;
@@ -718,18 +735,41 @@ export function openPrintableCertificate(
         }
         @media print {
           .print-btn { display: none !important; }
-          body { 
+          html, body { 
             padding: 0 !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
+            margin: 0 !important;
+            background: #FFFFFF !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           .page-container {
-            padding: 24px 28px;
-            min-height: auto;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            min-height: auto !important;
+            height: auto !important;
+            box-shadow: none !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
           .page-break { 
             page-break-before: always !important; 
             break-before: page !important; 
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          table {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          .annex-footer, .footer {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
         }
       </style>
