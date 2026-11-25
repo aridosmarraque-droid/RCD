@@ -179,12 +179,11 @@ export const PhotoLightboxModal: React.FC<PhotoLightboxModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-      {/* Hidden File Inputs */}
+      {/* Hidden File Inputs (sin capture forzado para permitir cámara o fototeca/galería en móvil) */}
       <input
         ref={albaranInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         className="hidden"
         onChange={(e) => handleFileSelected(e, 'albaran')}
       />
@@ -192,7 +191,6 @@ export const PhotoLightboxModal: React.FC<PhotoLightboxModalProps> = ({
         ref={truckInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         className="hidden"
         onChange={(e) => handleFileSelected(e, 'truck')}
       />
@@ -200,7 +198,6 @@ export const PhotoLightboxModal: React.FC<PhotoLightboxModalProps> = ({
         ref={unloadInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         className="hidden"
         onChange={(e) => handleFileSelected(e, 'unload')}
       />
