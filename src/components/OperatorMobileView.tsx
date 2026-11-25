@@ -643,13 +643,14 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
 
               <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 text-white font-semibold py-3.5 px-4 rounded-xl border border-slate-700 flex items-center justify-center space-x-2 transition text-sm">
                 <Upload className="w-5 h-5 text-slate-300 flex-shrink-0" />
-                <span>Subir de Galería</span>
+                <span>Subir de Fototeca / Galería</span>
                 <input
                   type="file"
                   accept="image/*"
                   className="hidden"
                   onChange={(e) => {
                     if (e.target.files?.[0]) handleAlbaranImageSelected(e.target.files[0]);
+                    e.target.value = '';
                   }}
                 />
               </label>
@@ -852,6 +853,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                       type="button"
                       onClick={async () => {
                         await RCDService.upsertClientFromScan(clientCode, clientName);
+                        setRegisteredClients(RCDService.getClients());
                         alert(`Cliente "${clientName}" registrado en la base de datos.`);
                         setUnrecognizedClient(null);
                       }}
@@ -1072,9 +1074,9 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
               Toma una foto del camión mostrando la matrícula (<strong className="text-emerald-400">{licensePlate}</strong>). Se estampará automáticamente la fecha, hora y coordenadas GPS.
             </p>
 
-            <div className="mb-4">
-              <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-lg transition w-full">
-                <Camera className="w-5 h-5 text-slate-950" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-lg transition text-sm">
+                <Camera className="w-5 h-5 text-slate-950 flex-shrink-0" />
                 <span>Foto Cámara Móvil</span>
                 <input
                   type="file"
@@ -1083,6 +1085,21 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                   className="hidden"
                   onChange={(e) => {
                     if (e.target.files?.[0]) handleTruckPhotoSelected(e.target.files[0]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+
+              <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 text-white font-semibold py-3.5 px-4 rounded-xl border border-slate-700 flex items-center justify-center space-x-2 transition text-sm">
+                <Upload className="w-5 h-5 text-slate-300 flex-shrink-0" />
+                <span>Subir de Fototeca / Galería</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) handleTruckPhotoSelected(e.target.files[0]);
+                    e.target.value = '';
                   }}
                 />
               </label>
@@ -1169,9 +1186,9 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
               </select>
             </div>
 
-            <div className="mb-4">
-              <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-lg transition w-full">
-                <Camera className="w-5 h-5 text-slate-950" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-lg transition text-sm">
+                <Camera className="w-5 h-5 text-slate-950 flex-shrink-0" />
                 <span>Foto de la Descarga</span>
                 <input
                   type="file"
@@ -1180,6 +1197,21 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
                   className="hidden"
                   onChange={(e) => {
                     if (e.target.files?.[0]) handleUnloadPhotoSelected(e.target.files[0]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+
+              <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 text-white font-semibold py-3.5 px-4 rounded-xl border border-slate-700 flex items-center justify-center space-x-2 transition text-sm">
+                <Upload className="w-5 h-5 text-slate-300 flex-shrink-0" />
+                <span>Subir de Fototeca / Galería</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) handleUnloadPhotoSelected(e.target.files[0]);
+                    e.target.value = '';
                   }}
                 />
               </label>
@@ -1447,6 +1479,7 @@ export const OperatorMobileView: React.FC<OperatorMobileViewProps> = ({ onAlbara
               <button
                 onClick={async () => {
                   await RCDService.upsertClientFromScan(unrecognizedClient.code, unrecognizedClient.name);
+                  setRegisteredClients(RCDService.getClients());
                   setUnrecognizedClient(null);
                 }}
                 className="w-full sm:w-1/2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center space-x-1"
