@@ -143,7 +143,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
             <h2 className="text-xl font-extrabold text-white">{client.name}</h2>
           </div>
           <p className="text-xs text-slate-400">
-            NIF/CIF: <strong className="text-slate-300 font-mono">{client.cif}</strong> | Email: {client.email} | Móvil: {client.mobile}
+            NIF/CIF: <strong className="text-slate-300 font-mono">{client.cif}</strong> | Email: {client.email || 'No especificado'} | Móvil: {client.mobile || 'No especificado'}
           </p>
         </div>
 
@@ -521,4 +521,3 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
     </div>
   );
 };
-
