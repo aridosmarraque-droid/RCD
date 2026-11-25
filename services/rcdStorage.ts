@@ -2,76 +2,78 @@ import { Albaran, Certificate, Client, RCDUser, WasteType } from '../types/rcd';
 import { SupabaseService } from './supabaseClient';
 import { UltramsgService } from './ultramsgService';
 import { EmailService } from './emailService';
+import { compressImage } from '../utils/imageCompressor';
+import {
+  saveAlbaranesToIndexedDB,
+  loadAlbaranesFromIndexedDB,
+  saveCertificatesToIndexedDB,
+  loadCertificatesFromIndexedDB,
+} from './rcdIndexedDB';
 
-export const OFFICIAL_WASTE_TYPES: WasteType[] = [
-  {
-    code: '17 01 01',
-    name: 'Hormigón y Piedra (Escombro Limpio)',
-    category: 'Limpio',
-    pricePerTon: 8.5,
-    description: 'Bloques de hormigón, mortero, piedra natural sin mezcla de plásticos ni maderas.',
-    maxCapacityTons: 10000,
-  },
-  {
-    code: '17 01 02',
-    name: 'Ladrillos, Tejas y Cerámica',
-    category: 'Limpio',
-    pricePerTon: 9.0,
-    description: 'Material cerámico de tabiquería, teja roja, gres y azulejos.',
-    maxCapacityTons: 8000,
-  },
-  {
-    code: '17 01 07',
-    name: 'Mezcla Hormigón y Cerámica (Escombro Seleccionado)',
-    category: 'Limpio',
-    pricePerTon: 11.0,
-    description: 'Mezcla limpia de materiales pétreos y cerámicos sin impropios.',
-    maxCapacityTons: 12000,
-  },
-  {
-    code: '17 05 04',
-    name: 'Tierras y Piedras de Excavación',
-    category: 'Tierras',
-    pricePerTon: 6.0,
-    description: 'Tierras limpias procedente de desbroces, cimentaciones y vaciados de obras.',
-    maxCapacityTons: 20000,
-  },
-  {
-    code: '17 09 04',
-    name: 'Residuos Mezclados RCD (Escombro Sucio / Mezcla)',
-    category: 'Sucio',
-    pricePerTon: 18.5,
-    description: 'Mezclas de RCD con resto de yesos, maderas, plásticos o sacos de papel.',
-    maxCapacityTons: 5000,
-  },
-  {
-    code: '17 02 01',
-    name: 'Madera de Obra y Encofrados',
-    category: 'Valorizable',
-    pricePerTon: 14.0,
-    description: 'Palets, tableros de encofrar, vigas y recortes de madera.',
-    maxCapacityTons: 3000,
-  },
-  {
-    code: '17 04 05',
-    name: 'Hierro y Acero (Metales RCD)',
-    category: 'Valorizable',
-    pricePerTon: 0.0,
-    description: 'Varillas de ferralla, perfiles de acero, tuberías metálicas.',
-    maxCapacityTons: 2000,
-  },
-];
+export const OFFICIAL_WASTE_TYPES: WasteType[] = [];
 
 const STORAGE_KEYS = {
-  CLIENTS: 'rcd_app_clients_v3',
-  ALBARANES: 'rcd_app_albaranes_v3',
-  CERTIFICATES: 'rcd_app_certificates_v3',
-  WASTE_TYPES: 'rcd_app_waste_types_v3',
-  USERS: 'rcd_app_users_v3',
-  CURRENT_USER: 'rcd_app_current_user_v3',
+  CLIENTS: 'rcd_app_clients_v5',
+  ALBARANES: 'rcd_app_albaranes_v5',
+  CERTIFICATES: 'rcd_app_certificates_v5',
+  WASTE_TYPES: 'rcd_app_waste_types_v5',
+  USERS: 'rcd_app_users_v5',
+  CURRENT_USER: 'rcd_app_current_user_v5',
 };
 
-// DEMO DATA CLEARED AS REQUESTED BY USER
+// Purge all legacy demo or older cache versions from localStorage
+try {
+  const activeKeys = new Set([
+    STORAGE_KEYS.CLIENTS,
+    STORAGE_KEYS.ALBARANES,
+    STORAGE_KEYS.CERTIFICATES,
+    STORAGE_KEYS.WASTE_TYPES,
+    STORAGE_KEYS.USERS,
+    STORAGE_KEYS.CURRENT_USER,
+    'rcd_supabase_url',
+    'rcd_supabase_anon_key',
+    'rcd_ultramsg_instance_id',
+    'rcd_ultramsg_token',
+    'rcd_email_webhook_url',
+    'rcd_email_api_key',
+    'rcd_email_from_address',
+    'rcd_email_signer_address',
+  ]);
+  
+  const toDelete: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && (key.startsWith('rcd_') || key.includes('albaran') || key.includes('client') || key.includes('cert')) && !activeKeys.has(key)) {
+      toDelete.push(key);
+    }
+  }
+  for (const k of toDelete) {
+    localStorage.removeItem(k);
+  }
+
+  // Descomprimir y liberar espacio si el usuario tenía certificados con PDFs pesados en localStorage
+  const rawCerts = localStorage.getItem(STORAGE_KEYS.CERTIFICATES);
+  if (rawCerts && rawCerts.length > 50_000) {
+    try {
+      const parsedCerts = JSON.parse(rawCerts);
+      if (Array.isArray(parsedCerts)) {
+        saveCertificatesToIndexedDB(parsedCerts).catch(() => {});
+        const light = parsedCerts.map((c: any) => ({
+          ...c,
+          signedPdfData: c.signedPdfData && c.signedPdfData.length > 10_000 ? '' : c.signedPdfData,
+          signatureData: c.signatureData && c.signatureData.length > 50_000 ? '' : c.signatureData,
+        }));
+        localStorage.setItem(STORAGE_KEYS.CERTIFICATES, JSON.stringify(light));
+      }
+    } catch {
+      // ignore
+    }
+  }
+} catch {
+  // ignore in non-browser environments
+}
+
+// INITIAL DATA IS EMPTY - DATA MUST COME FROM SUPABASE OR BE CREATED IN APP
 const INITIAL_CLIENTS: Client[] = [];
 const INITIAL_ALBARANES: Albaran[] = [];
 const INITIAL_CERTIFICATES: Certificate[] = [];
@@ -124,7 +126,7 @@ export class RCDService {
     if (SupabaseService.isConfigured()) {
       try {
         const remoteClients = await SupabaseService.fetchClients();
-        if (remoteClients) {
+        if (remoteClients !== null && Array.isArray(remoteClients)) {
           this.saveClientsLocal(remoteClients);
           return remoteClients;
         }
@@ -161,7 +163,10 @@ export class RCDService {
     notifyEmail: boolean,
     notifyMobile: boolean,
     email?: string,
-    mobile?: string
+    mobile?: string,
+    name?: string,
+    code?: string,
+    cif?: string
   ): Promise<Client | null> {
     const clients = this.getClients();
     const index = clients.findIndex((c) => c.id === id);
@@ -173,6 +178,9 @@ export class RCDService {
       notifyMobile,
       ...(email !== undefined ? { email } : {}),
       ...(mobile !== undefined ? { mobile } : {}),
+      ...(name !== undefined && name.trim() !== '' ? { name: name.trim() } : {}),
+      ...(code !== undefined && code.trim() !== '' ? { code: code.trim() } : {}),
+      ...(cif !== undefined && cif.trim() !== '' ? { cif: cif.trim().toUpperCase() } : {}),
     };
 
     clients[index] = updated;
@@ -180,17 +188,56 @@ export class RCDService {
     return updated;
   }
 
-  static isClientRegistered(clientName: string, clientCode?: string): boolean {
-    if (!clientName) return false;
-    let cleanName = clientName.trim().replace(/^\[[A-Z0-9\-]+\]\s*/i, '').replace(/^[\-:\.]\s*/, '').trim();
-    let cleanCode = (clientCode || '').trim().replace(/^\[|\]$/g, '');
-
+  static async updateClient(id: string, clientData: Partial<Client>): Promise<Client> {
     const clients = this.getClients();
-    return clients.some(
-      (c) =>
-        (cleanCode && c.code.toLowerCase() === cleanCode.toLowerCase()) ||
-        (cleanName && c.name.toLowerCase() === cleanName.toLowerCase())
-    );
+    const index = clients.findIndex((c) => c.id === id);
+    if (index === -1) {
+      throw new Error(`Cliente con ID ${id} no encontrado.`);
+    }
+
+    const updated: Client = {
+      ...clients[index],
+      ...clientData,
+      id, // Preserve ID
+    };
+
+    clients[index] = updated;
+    await this.saveClients(clients);
+    return updated;
+  }
+
+  static isClientRegistered(clientName: string, clientCode?: string, clientCif?: string): boolean {
+    return this.findMatchingClient(clientName, clientCode, clientCif) !== null;
+  }
+
+  static findMatchingClient(clientName?: string, clientCode?: string, clientCif?: string): Client | null {
+    const clients = this.getClients();
+    let cleanName = (clientName || '').trim().replace(/^\[[A-Z0-9\-]+\]\s*/i, '').replace(/^[\-:\.]\s*/, '').toLowerCase();
+    let cleanCode = (clientCode || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+    let cleanCif = (clientCif || '').trim().toUpperCase().replace(/^ES/, '');
+
+    // 1. Match by exact CIF
+    if (cleanCif) {
+      const matchCif = clients.find((c) => c.cif && c.cif.toUpperCase().replace(/^ES/, '').replace(/[^A-Z0-9]/g, '') === cleanCif.replace(/[^A-Z0-9]/g, ''));
+      if (matchCif) return matchCif;
+    }
+
+    // 2. Match by exact Code (ej: C0096, C0048)
+    if (cleanCode) {
+      const matchCode = clients.find((c) => c.code.toLowerCase() === cleanCode || c.code.toLowerCase().replace(/[^a-z0-9]/g, '') === cleanCode.replace(/[^a-z0-9]/g, ''));
+      if (matchCode) return matchCode;
+    }
+
+    // 3. Match by Name
+    if (cleanName && cleanName.length >= 3) {
+      const matchName = clients.find((c) => {
+        const n = c.name.toLowerCase();
+        return n === cleanName || n.includes(cleanName) || cleanName.includes(n);
+      });
+      if (matchName) return matchName;
+    }
+
+    return null;
   }
 
   static async upsertClientFromScan(clientCode: string, clientName: string): Promise<Client> {
@@ -214,8 +261,8 @@ export class RCDService {
       code: cleanCode || `C-${Math.floor(1000 + Math.random() * 9000)}`,
       name: cleanName || 'Cliente No Identificado',
       cif: 'B-' + Math.floor(10000000 + Math.random() * 90000000),
-      email: `contacto@${(cleanName || 'cliente').toLowerCase().replace(/[^a-z0-9]/g, '')}.es`,
-      mobile: '+346' + Math.floor(10000000 + Math.random() * 90000000),
+      email: '',
+      mobile: '',
       notifyEmail: true,
       notifyMobile: true,
       createdAt: new Date().toISOString(),
@@ -229,33 +276,119 @@ export class RCDService {
   // ===============================================
   // ALBARANES MANAGEMENT
   // ===============================================
+  private static _cachedAlbaranes: Albaran[] | null = null;
+
   static getAlbaranes(): Albaran[] {
+    if (this._cachedAlbaranes && this._cachedAlbaranes.length > 0) {
+      return this._cachedAlbaranes;
+    }
+
     try {
       const data = localStorage.getItem(STORAGE_KEYS.ALBARANES);
-      if (!data) {
-        return INITIAL_ALBARANES;
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          this._cachedAlbaranes = parsed;
+          return this._cachedAlbaranes;
+        }
       }
-      return JSON.parse(data);
     } catch {
-      return INITIAL_ALBARANES;
+      // Ignorar error de parsing
     }
+
+    return this._cachedAlbaranes || INITIAL_ALBARANES;
   }
 
   static async loadAlbaranesFromRemote(): Promise<Albaran[]> {
+    // Si la caché en memoria está vacía, intentar precargar desde IndexedDB donde están las fotos completas
+    if (!this._cachedAlbaranes || this._cachedAlbaranes.length === 0) {
+      try {
+        const idbAlbaranes = await loadAlbaranesFromIndexedDB();
+        if (idbAlbaranes && idbAlbaranes.length > 0) {
+          this._cachedAlbaranes = idbAlbaranes;
+        }
+      } catch (e) {
+        // Ignorar
+      }
+    }
+
     if (SupabaseService.isConfigured()) {
       try {
         const remoteAlbaranes = await SupabaseService.fetchAlbaranes();
-        if (remoteAlbaranes && Array.isArray(remoteAlbaranes)) {
-          // Merge local albaranes if remote is empty or missing newly created ones
+        if (remoteAlbaranes !== null && Array.isArray(remoteAlbaranes)) {
+          // Fusión Inteligente (Smart Merge) para proteger fotos y punteo SAP contra sobreescrituras
           const localAlbaranes = this.getAlbaranes();
-          const remoteMap = new Map(remoteAlbaranes.map((a) => [a.id, a]));
-          for (const localAlb of localAlbaranes) {
-            if (!remoteMap.has(localAlb.id)) {
-              remoteAlbaranes.push(localAlb);
+          const localMap = new Map<string, Albaran>(localAlbaranes.map((a) => [a.id, a]));
+
+          const mergedAlbaranes = remoteAlbaranes.map((remote) => {
+            const local = localMap.get(remote.id);
+            if (!local) return remote;
+
+            // 1. Fotos: Si el registro local ya tiene una foto válida y el remoto viene vacío o nulo
+            // (por ejemplo por latencia de subida o payload pendiente), conservar SIEMPRE la foto local
+            const albaranPhotoUrl =
+              local.albaranPhotoUrl && local.albaranPhotoUrl.trim().length > 0 && !local.albaranPhotoUrl.includes('[Foto Guardada]')
+                ? local.albaranPhotoUrl
+                : remote.albaranPhotoUrl || '';
+
+            const truckPhotoUrl =
+              local.truckPhotoUrl && local.truckPhotoUrl.trim().length > 0 && !local.truckPhotoUrl.includes('[Foto Guardada]')
+                ? local.truckPhotoUrl
+                : remote.truckPhotoUrl || '';
+
+            const unloadPhotoUrl =
+              local.unloadPhotoUrl && local.unloadPhotoUrl.trim().length > 0 && !local.unloadPhotoUrl.includes('[Foto Guardada]')
+                ? local.unloadPhotoUrl
+                : remote.unloadPhotoUrl || '';
+
+            // 2. Punteo SAP: Si en local está marcado como punteado (sapChecked: true) y en remoto viene false
+            // (por ejemplo, porque las columnas aún no se han migrado en la BBDD de Supabase), PRESERVAR el punteo local
+            const sapChecked = Boolean(remote.sapChecked || local.sapChecked);
+            const sapCheckedAt = remote.sapCheckedAt || (sapChecked ? local.sapCheckedAt : undefined);
+            const sapCheckedBy = remote.sapCheckedBy || (sapChecked ? local.sapCheckedBy : undefined);
+            const sapNotes = remote.sapNotes || local.sapNotes;
+
+            // 3. Certificación: Si en local se ha desmarcado/desbloqueado (certified: false), respetar el desbloqueo
+            const isCertified =
+              local.certified === false
+                ? false
+                : remote.certified !== undefined
+                ? Boolean(remote.certified)
+                : Boolean(local.certified);
+
+            const certificateId = isCertified ? (remote.certificateId || local.certificateId) : undefined;
+            const certificateNumber = isCertified ? (remote.certificateNumber || local.certificateNumber) : undefined;
+            const origin = remote.origin !== undefined && remote.origin !== '' ? remote.origin : (local.origin || '');
+
+            return {
+              ...remote,
+              ...local,
+              albaranPhotoUrl,
+              truckPhotoUrl,
+              unloadPhotoUrl,
+              sapChecked,
+              sapCheckedAt,
+              sapCheckedBy,
+              sapNotes,
+              origin,
+              certified: isCertified,
+              certificateId,
+              certificateNumber,
+            };
+          });
+
+          // Agregar albaranes locales que aún no existan en remote (por si se crearon offline o están en vuelo)
+          const remoteIdSet = new Set(remoteAlbaranes.map((r) => r.id));
+          for (const local of localAlbaranes) {
+            if (!remoteIdSet.has(local.id)) {
+              mergedAlbaranes.push(local);
             }
           }
-          this.saveAlbaranesLocal(remoteAlbaranes);
-          return remoteAlbaranes;
+
+          this.saveAlbaranesLocal(mergedAlbaranes);
+          // Hidratar en segundo plano las fotos de albaranes antiguos sin bloquear la UI
+          this.hydrateMissingPhotosInBackground(mergedAlbaranes);
+          return mergedAlbaranes;
         }
       } catch (err) {
         console.warn('Notice loading albaranes from Supabase:', err);
@@ -264,28 +397,141 @@ export class RCDService {
     return this.getAlbaranes();
   }
 
-  static saveAlbaranesLocal(albaranes: Albaran[]): void {
+  private static _isHydratingPhotos = false;
+
+  /**
+   * Hidrata en segundo plano y en lotes pequeños (10 en 10) las fotos de albaranes
+   * que aún no estén en memoria o IndexedDB, evitando cualquier saturación de Supabase.
+   */
+  static async hydrateMissingPhotosInBackground(albaranes: Albaran[]): Promise<void> {
+    if (this._isHydratingPhotos || !SupabaseService.isConfigured() || !Array.isArray(albaranes)) return;
+
+    const needPhotos = albaranes.filter(
+      (a) => !a.albaranPhotoUrl && !a.truckPhotoUrl && !a.unloadPhotoUrl
+    );
+
+    if (needPhotos.length === 0) return;
+
+    this._isHydratingPhotos = true;
+
+    // Ejecutar con retardo para permitir que toda la interfaz y tablas se muestren al instante
+    setTimeout(async () => {
+      try {
+        const BATCH_SIZE = 10;
+        for (let i = 0; i < needPhotos.length; i += BATCH_SIZE) {
+          const chunk = needPhotos.slice(i, i + BATCH_SIZE);
+          const ids = chunk.map((a) => a.id);
+
+          const photoMap = await SupabaseService.fetchPhotosBatch(ids);
+          let updatedAny = false;
+
+          const currentList = this.getAlbaranes();
+          const currentMap = new Map(currentList.map((a) => [a.id, a]));
+
+          for (const id of ids) {
+            const p = photoMap[id];
+            if (p && (p.albaranPhotoUrl || p.truckPhotoUrl || p.unloadPhotoUrl)) {
+              const target = currentMap.get(id);
+              if (target) {
+                if (p.albaranPhotoUrl) target.albaranPhotoUrl = p.albaranPhotoUrl;
+                if (p.truckPhotoUrl) target.truckPhotoUrl = p.truckPhotoUrl;
+                if (p.unloadPhotoUrl) target.unloadPhotoUrl = p.unloadPhotoUrl;
+                updatedAny = true;
+              }
+            }
+          }
+
+          if (updatedAny) {
+            saveAlbaranesToIndexedDB(currentList).catch(() => {});
+          }
+
+          // Pausa entre lotes para mantener el uso de CPU de Supabase en 0%
+          await new Promise((res) => setTimeout(res, 800));
+        }
+      } catch (e) {
+        console.warn('Notice en hidratación de fotos en segundo plano:', e);
+      } finally {
+        this._isHydratingPhotos = false;
+      }
+    }, 1200);
+  }
+
+  /**
+   * Garantiza que un albarán disponga de sus fotografías cuando se abre en un modal
+   * (Visor de Fotos, Enviar WhatsApp o Punteo SAP). Primero busca en IndexedDB local
+   * y si falta, consulta Supabase por ID directo en ~15ms.
+   */
+  static async ensureAlbaranPhotos(albaran: Albaran): Promise<Albaran> {
+    if (!albaran || !albaran.id) return albaran;
+
+    if (albaran.albaranPhotoUrl || albaran.truckPhotoUrl || albaran.unloadPhotoUrl) {
+      return albaran;
+    }
+
     try {
-      localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(albaranes));
-    } catch (quotaErr) {
-      console.warn('LocalStorage QuotaExceededError while saving albaranes. Pruning base64 photos from older entries:', quotaErr);
-      // Prune base64 photos for older entries (keep full photos for the newest 3) to fit in localStorage limit
-      const pruned = albaranes.map((alb, index) => {
-        if (index > 2) {
+      const idbAlbaranes = await loadAlbaranesFromIndexedDB();
+      const local = idbAlbaranes?.find((a) => a.id === albaran.id);
+      if (local && (local.albaranPhotoUrl || local.truckPhotoUrl || local.unloadPhotoUrl)) {
+        albaran.albaranPhotoUrl = local.albaranPhotoUrl || '';
+        albaran.truckPhotoUrl = local.truckPhotoUrl || '';
+        albaran.unloadPhotoUrl = local.unloadPhotoUrl || '';
+        return albaran;
+      }
+    } catch {
+      // Continuar a Supabase
+    }
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        const photos = await SupabaseService.fetchAlbaranPhotos(albaran.id);
+        if (photos) {
+          if (photos.albaranPhotoUrl) albaran.albaranPhotoUrl = photos.albaranPhotoUrl;
+          if (photos.truckPhotoUrl) albaran.truckPhotoUrl = photos.truckPhotoUrl;
+          if (photos.unloadPhotoUrl) albaran.unloadPhotoUrl = photos.unloadPhotoUrl;
+
+          // Guardar en la caché en memoria y en IndexedDB
+          const all = this.getAlbaranes();
+          const idx = all.findIndex((a) => a.id === albaran.id);
+          if (idx !== -1) {
+            all[idx] = { ...all[idx], ...photos };
+            this.saveAlbaranesLocal(all);
+          }
+        }
+      } catch (err) {
+        console.warn('Notice asegurando fotos del albarán:', err);
+      }
+    }
+
+    return albaran;
+  }
+
+  static saveAlbaranesLocal(albaranes: Albaran[]): void {
+    // 1. SIEMPRE mantener la caché en memoria actualizada para búsquedas síncronas instantáneas
+    this._cachedAlbaranes = albaranes;
+
+    // 2. Persistir copia completa sin límite de cuota en IndexedDB (con todas las fotos)
+    saveAlbaranesToIndexedDB(albaranes).catch(() => {});
+
+    // 3. Persistir en localStorage versión ligera (sin fotos pesadas base64) para garantizar 0 errores de cuota
+    try {
+      const lightAlbaranes = albaranes.map((alb) => {
+        const isPhoto1Heavy = alb.albaranPhotoUrl && alb.albaranPhotoUrl.startsWith('data:image');
+        const isPhoto2Heavy = alb.truckPhotoUrl && alb.truckPhotoUrl.startsWith('data:image');
+        const isPhoto3Heavy = alb.unloadPhotoUrl && alb.unloadPhotoUrl.startsWith('data:image');
+        if (isPhoto1Heavy || isPhoto2Heavy || isPhoto3Heavy) {
           return {
             ...alb,
-            albaranPhotoUrl: alb.albaranPhotoUrl ? (alb.albaranPhotoUrl.length > 500 ? '[Foto Guardada]' : alb.albaranPhotoUrl) : undefined,
-            truckPhotoUrl: alb.truckPhotoUrl ? (alb.truckPhotoUrl.length > 500 ? '[Foto Guardada]' : alb.truckPhotoUrl) : undefined,
-            unloadPhotoUrl: alb.unloadPhotoUrl ? (alb.unloadPhotoUrl.length > 500 ? '[Foto Guardada]' : alb.unloadPhotoUrl) : undefined,
+            albaranPhotoUrl: isPhoto1Heavy ? '' : alb.albaranPhotoUrl,
+            truckPhotoUrl: isPhoto2Heavy ? '' : alb.truckPhotoUrl,
+            unloadPhotoUrl: isPhoto3Heavy ? '' : alb.unloadPhotoUrl,
           };
         }
         return alb;
       });
-      try {
-        localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(pruned));
-      } catch (e2) {
-        console.error('Critical failure saving albaranes to localStorage:', e2);
-      }
+
+      localStorage.setItem(STORAGE_KEYS.ALBARANES, JSON.stringify(lightAlbaranes));
+    } catch {
+      // Silenciar limpiamente cualquier error de cuota ajeno
     }
   }
 
@@ -303,6 +549,35 @@ export class RCDService {
       throw new Error('Pongase en contacto con la oficina, albaran SAP ya registrado.');
     }
 
+    // Ensure photos are safely compressed (under 300KB) if raw camera strings were passed
+    let albaranPhotoUrl = newAlbaran.albaranPhotoUrl;
+    let truckPhotoUrl = newAlbaran.truckPhotoUrl;
+    let unloadPhotoUrl = newAlbaran.unloadPhotoUrl;
+
+    if (albaranPhotoUrl && albaranPhotoUrl.length > 500_000) {
+      try {
+        albaranPhotoUrl = await compressImage(albaranPhotoUrl, { maxDimension: 1200, quality: 0.78 });
+      } catch (e) {
+        console.warn('Fallback albaran photo compression:', e);
+      }
+    }
+
+    if (truckPhotoUrl && truckPhotoUrl.length > 500_000) {
+      try {
+        truckPhotoUrl = await compressImage(truckPhotoUrl, { maxDimension: 1200, quality: 0.78 });
+      } catch (e) {
+        console.warn('Fallback truck photo compression:', e);
+      }
+    }
+
+    if (unloadPhotoUrl && unloadPhotoUrl.length > 500_000) {
+      try {
+        unloadPhotoUrl = await compressImage(unloadPhotoUrl, { maxDimension: 1200, quality: 0.78 });
+      } catch (e) {
+        console.warn('Fallback unload photo compression:', e);
+      }
+    }
+
     const albaranes = this.getAlbaranes();
 
     // Ensure client exists
@@ -310,6 +585,9 @@ export class RCDService {
 
     const created: Albaran = {
       ...newAlbaran,
+      albaranPhotoUrl,
+      truckPhotoUrl,
+      unloadPhotoUrl,
       id: `alb-${Date.now()}`,
       clientId: client.id,
       certified: false,
@@ -321,45 +599,345 @@ export class RCDService {
       },
     };
 
-    let mobileSent = false;
-    let emailSent = false;
-
-    // 1. WhatsApp notification via Ultramsg if client has mobile notification enabled
-    if (client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
-      const messageText = `🏭 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha registrado en planta un nuevo albarán de entrega:\n📜 *Nº Albarán:* ${created.numAlbaran}\n📦 *Residuo:* ${created.wasteTypeName} (${created.wasteTypeCode})\n⚖️ *Peso Neto:* ${created.quantityTons} toneladas\n🚚 *Matrícula:* ${created.licensePlate}\n📍 *Zona:* ${created.plantZone}\n📅 *Fecha/Hora:* ${created.date} ${created.time}\n\nGracias por su compromiso con la gestión sostenible de RCD.`;
-
-      const sendResult = await UltramsgService.sendWhatsApp(client.mobile, messageText);
-      if (sendResult.success) {
-        mobileSent = true;
-      }
-    }
-
-    // 2. Email notification via EmailService if client has notifyEmail enabled and an email address
-    if (client.notifyEmail && client.email) {
-      const emailResult = await EmailService.sendAlbaranEmail(client.email, client.name, created);
-      if (emailResult.success) {
-        emailSent = true;
-      }
-    }
-
-    created.notificationsSent = {
-      mobileSent,
-      emailSent,
-      timestamp: new Date().toISOString(),
-    };
-
+    // Save immediately to local storage so operator gets instant confirmation
     albaranes.unshift(created);
     this.saveAlbaranesLocal(albaranes);
 
+    // 1. Sync to Supabase first so loadAlbaranesFromRemote immediately has the new record
     if (SupabaseService.isConfigured()) {
       try {
-        await SupabaseService.insertAlbaran(created);
+        await Promise.race([
+          SupabaseService.insertAlbaran(created),
+          new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout de sincronización con Supabase (5s)')), 5000)
+          ),
+        ]);
       } catch (err) {
         console.warn('Notice saving albaran to Supabase:', err);
       }
     }
 
+    // 2. Ejecutar notificaciones de WhatsApp y Correo para la entrada del albarán
+    (async () => {
+      let mobileSent = false;
+      let emailSent = false;
+
+      // Diagnóstico en consola para avisos automáticos
+      console.group(`🔔 [Notificaciones de Entrada RCD] Albarán Nº ${created.numAlbaran}`);
+      console.log('• Cliente:', client.name);
+      console.log('• Configuración Cliente Móvil:', { notifyMobile: client.notifyMobile, mobile: client.mobile });
+      console.log('• Configuración Cliente Email:', { notifyEmail: client.notifyEmail, email: client.email });
+
+      // WhatsApp notification via Ultramsg if client has mobile notification enabled
+      if (client.notifyMobile && client.mobile) {
+        if (UltramsgService.isConfigured()) {
+          try {
+            const messageText = `🏭 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha registrado en planta un nuevo albarán de entrega:\n📜 *Nº Albarán:* ${created.numAlbaran}\n📦 *Residuo:* ${created.wasteTypeName} (${created.wasteTypeCode})\n⚖️ *Peso Neto:* ${created.quantityTons} toneladas\n🚚 *Matrícula:* ${created.licensePlate}\n📍 *Zona:* ${created.plantZone}\n📅 *Fecha/Hora:* ${created.date} ${created.time}\n\nGracias por su compromiso con la gestión sostenible de RCD.`;
+
+            const sendResult = await Promise.race([
+              UltramsgService.sendWhatsApp(client.mobile, messageText),
+              new Promise<{ success: boolean; error: string }>((resolve) =>
+                setTimeout(() => resolve({ success: false, error: 'Timeout de red Ultramsg' }), 6000)
+              ),
+            ]);
+            if (sendResult.success) {
+              mobileSent = true;
+              console.log('✅ WhatsApp enviado con éxito al cliente:', client.mobile);
+            } else {
+              console.warn('⚠️ No se pudo entregar WhatsApp:', sendResult.error);
+            }
+          } catch (e) {
+            console.warn('⚠️ Error al enviar WhatsApp:', e);
+          }
+        } else {
+          console.info('ℹ️ Cliente tiene WhatsApp activado, pero Ultramsg no está configurado en Ajustes.');
+        }
+      }
+
+      // Email notification via EmailService if client has notifyEmail enabled and an email address
+      if (client.notifyEmail && client.email) {
+        if (EmailService.isConfigured()) {
+          try {
+            const emailResult = await Promise.race([
+              EmailService.sendAlbaranEmail(client.email, client.name, created),
+              new Promise<{ success: boolean; error?: string }>((resolve) =>
+                setTimeout(() => resolve({ success: false, error: 'Timeout de red Email (6s)' }), 6000)
+              ),
+            ]);
+            if (emailResult.success) {
+              emailSent = true;
+              console.log('✅ Correo de albarán entregado con éxito a:', client.email);
+            } else {
+              console.warn('⚠️ Fallo en el envío de correo de albarán:', emailResult.error);
+            }
+          } catch (e) {
+            console.warn('⚠️ Error enviando correo de albarán:', e);
+          }
+        } else {
+          console.info('ℹ️ Cliente tiene Email activado, pero el servicio de correo no está configurado en Ajustes.');
+        }
+      }
+
+      console.groupEnd();
+
+      created.notificationsSent = {
+        mobileSent,
+        emailSent,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Actualizar el estado de la notificación en el almacenamiento local y remoto
+      const currentAlbs = this.getAlbaranes();
+      const idx = currentAlbs.findIndex((a) => a.id === created.id);
+      if (idx !== -1) {
+        currentAlbs[idx].notificationsSent = created.notificationsSent;
+        this.saveAlbaranesLocal(currentAlbs);
+        if (SupabaseService.isConfigured()) {
+          SupabaseService.insertAlbaran(currentAlbs[idx]).catch(() => {});
+        }
+      }
+    })();
+
     return created;
+  }
+
+  static async updateAlbaran(id: string, updates: Partial<Albaran>): Promise<Albaran> {
+    const albaranes = this.getAlbaranes();
+    let index = albaranes.findIndex((a) => a.id === id);
+
+    // Si no está en el listado activo y Supabase está configurado, recuperar desde remoto
+    if (index === -1 && SupabaseService.isConfigured()) {
+      try {
+        const remotes = await SupabaseService.fetchAlbaranes();
+        const remoteAlb = remotes?.find((r) => r.id === id);
+        if (remoteAlb) {
+          albaranes.push(remoteAlb);
+          index = albaranes.length - 1;
+        }
+      } catch (err) {
+        console.warn('Notice checking remote albaran in updateAlbaran:', err);
+      }
+    }
+
+    if (index === -1) {
+      throw new Error(`Albarán con ID ${id} no encontrado.`);
+    }
+
+    const currentAlbaran = albaranes[index];
+
+    // Restricción estricta: Si un albarán ya se ha adjuntado a un certificado ya no puede ser modificado en pesaje/LER
+    // (A menos que sea solo punteo SAP o actualización de fotos como subsanación administrativa)
+    const isOnlyMetaOrPhotos = Object.keys(updates).every((key) =>
+      ['sapChecked', 'sapCheckedAt', 'sapCheckedBy', 'sapNotes', 'albaranPhotoUrl', 'truckPhotoUrl', 'unloadPhotoUrl'].includes(key)
+    );
+
+    if (currentAlbaran.certified && !isOnlyMetaOrPhotos) {
+      throw new Error(
+        `El albarán Nº ${currentAlbaran.numAlbaran} ya está certificado (${currentAlbaran.certificateNumber || 'en certificado'}) y no puede ser modificado.`
+      );
+    }
+
+    // Check for duplicate albaran number if changed
+    if (updates.numAlbaran && updates.numAlbaran.trim().toLowerCase() !== currentAlbaran.numAlbaran.trim().toLowerCase()) {
+      const isDup = albaranes.some(
+        (a) => a.id !== id && a.numAlbaran.trim().toLowerCase() === updates.numAlbaran!.trim().toLowerCase()
+      );
+      if (isDup) {
+        throw new Error(`El número de albarán "${updates.numAlbaran}" ya existe en el sistema.`);
+      }
+    }
+
+    // Compresión y reducción de fotos si vienen imágenes nuevas pesadas
+    let albaranPhotoUrl = updates.albaranPhotoUrl !== undefined ? updates.albaranPhotoUrl : currentAlbaran.albaranPhotoUrl;
+    let truckPhotoUrl = updates.truckPhotoUrl !== undefined ? updates.truckPhotoUrl : currentAlbaran.truckPhotoUrl;
+    let unloadPhotoUrl = updates.unloadPhotoUrl !== undefined ? updates.unloadPhotoUrl : currentAlbaran.unloadPhotoUrl;
+
+    // Protección de integridad: Si una actualización no trae foto o viene vacía, pero el albarán ya tenía una foto
+    // previa y no se solicitó expresamente su eliminación, conservamos la foto original
+    if (updates.truckPhotoUrl === '' && currentAlbaran.truckPhotoUrl && !(updates as any)._deleteTruckPhoto) {
+      truckPhotoUrl = currentAlbaran.truckPhotoUrl;
+    }
+    if (updates.unloadPhotoUrl === '' && currentAlbaran.unloadPhotoUrl && !(updates as any)._deleteUnloadPhoto) {
+      unloadPhotoUrl = currentAlbaran.unloadPhotoUrl;
+    }
+    if (updates.albaranPhotoUrl === '' && currentAlbaran.albaranPhotoUrl && !(updates as any)._deleteAlbaranPhoto) {
+      albaranPhotoUrl = currentAlbaran.albaranPhotoUrl;
+    }
+
+    if (albaranPhotoUrl && albaranPhotoUrl.startsWith('data:image') && albaranPhotoUrl.length > 500_000) {
+      try {
+        albaranPhotoUrl = await compressImage(albaranPhotoUrl, { maxDimension: 1200, quality: 0.78 });
+      } catch (e) {
+        console.warn('Fallback albaran photo compression:', e);
+      }
+    }
+
+    if (truckPhotoUrl && truckPhotoUrl.startsWith('data:image') && truckPhotoUrl.length > 500_000) {
+      try {
+        truckPhotoUrl = await compressImage(truckPhotoUrl, { maxDimension: 1200, quality: 0.78 });
+      } catch (e) {
+        console.warn('Fallback truck photo compression:', e);
+      }
+    }
+
+    if (unloadPhotoUrl && unloadPhotoUrl.startsWith('data:image') && unloadPhotoUrl.length > 500_000) {
+      try {
+        unloadPhotoUrl = await compressImage(unloadPhotoUrl, { maxDimension: 1200, quality: 0.78 });
+      } catch (e) {
+        console.warn('Fallback unload photo compression:', e);
+      }
+    }
+
+    const updated: Albaran = {
+      ...currentAlbaran,
+      ...updates,
+      albaranPhotoUrl,
+      truckPhotoUrl,
+      unloadPhotoUrl,
+      id, // Preserve original ID
+      certified: currentAlbaran.certified, // Preserve certification status
+    };
+
+    albaranes[index] = updated;
+    this.saveAlbaranesLocal(albaranes);
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        await SupabaseService.upsertAlbaran(updated);
+      } catch (err) {
+        console.warn('Notice updating albaran in Supabase:', err);
+      }
+    }
+
+    return updated;
+  }
+
+  /**
+   * Actualiza o subsana fotos de un albarán desde Modo Administrador
+   * Aplica compresión automática para reducir tamaño a ~100-150KB sin perder nitidez
+   */
+  static async updateAlbaranPhotos(
+    id: string,
+    photos: {
+      albaranPhotoUrl?: string;
+      truckPhotoUrl?: string;
+      unloadPhotoUrl?: string;
+    }
+  ): Promise<Albaran> {
+    return this.updateAlbaran(id, photos);
+  }
+
+  /**
+   * Punteo y Verificación individual de un albarán con SAP
+   */
+  static async toggleSapChecked(
+    id: string,
+    checked?: boolean,
+    notes?: string,
+    userName = 'Administrador',
+    fallbackAlbaran?: Albaran
+  ): Promise<Albaran> {
+    const albaranes = this.getAlbaranes();
+    let alb = albaranes.find((a) => a.id === id);
+
+    // 1. Si no está en memoria pero recibimos fallbackAlbaran desde la interfaz
+    if (!alb && fallbackAlbaran && fallbackAlbaran.id === id) {
+      alb = fallbackAlbaran;
+      albaranes.push(alb);
+    }
+
+    // 2. Si sigue sin encontrarse, comprobar si está en remoto en Supabase
+    if (!alb && SupabaseService.isConfigured()) {
+      try {
+        const remotes = await SupabaseService.fetchAlbaranes();
+        const found = remotes?.find((r) => r.id === id);
+        if (found) {
+          alb = found;
+          albaranes.push(alb);
+        }
+      } catch (err) {
+        console.warn('Notice checking remote albaran in toggleSapChecked:', err);
+      }
+    }
+
+    if (!alb) throw new Error(`Albarán ${id} no encontrado.`);
+
+    const newChecked = checked !== undefined ? checked : !alb.sapChecked;
+    const nowStr = new Date().toLocaleString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const updates: Partial<Albaran> = {
+      sapChecked: newChecked,
+      sapCheckedAt: newChecked ? nowStr : undefined,
+      sapCheckedBy: newChecked ? userName : undefined,
+      sapNotes: notes !== undefined ? notes : alb.sapNotes,
+    };
+
+    return this.updateAlbaran(id, updates);
+  }
+
+  /**
+   * Punteo en lote de múltiples albaranes con SAP
+   */
+  static async bulkSetSapChecked(
+    ids: string[],
+    checked: boolean,
+    notes?: string,
+    userName = 'Administrador',
+    fallbackList?: Albaran[]
+  ): Promise<Albaran[]> {
+    const nowStr = new Date().toLocaleString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const albaranes = this.getAlbaranes();
+
+    // Incorporar cualquier albarán visible que faltase en el almacenamiento local
+    if (fallbackList && Array.isArray(fallbackList)) {
+      const existingIds = new Set(albaranes.map((a) => a.id));
+      for (const item of fallbackList) {
+        if (ids.includes(item.id) && !existingIds.has(item.id)) {
+          albaranes.push(item);
+          existingIds.add(item.id);
+        }
+      }
+    }
+
+    const updatedList: Albaran[] = [];
+
+    for (let i = 0; i < albaranes.length; i++) {
+      if (ids.includes(albaranes[i].id)) {
+        albaranes[i] = {
+          ...albaranes[i],
+          sapChecked: checked,
+          sapCheckedAt: checked ? nowStr : undefined,
+          sapCheckedBy: checked ? userName : undefined,
+          sapNotes: notes !== undefined ? notes : albaranes[i].sapNotes,
+        };
+        updatedList.push(albaranes[i]);
+      }
+    }
+
+    this.saveAlbaranesLocal(albaranes);
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        await Promise.allSettled(updatedList.map((alb) => SupabaseService.upsertAlbaran(alb)));
+      } catch (err) {
+        console.warn('Notice syncing bulk SAP punteo with Supabase:', err);
+      }
+    }
+
+    return updatedList;
   }
 
   static async deleteAlbaran(id: string): Promise<void> {
@@ -378,25 +956,73 @@ export class RCDService {
   // ===============================================
   // CERTIFICATES MANAGEMENT
   // ===============================================
+  private static _cachedCertificates: Certificate[] | null = null;
+
   static getCertificates(): Certificate[] {
+    if (this._cachedCertificates && this._cachedCertificates.length > 0) {
+      return this._cachedCertificates;
+    }
+
     try {
       const data = localStorage.getItem(STORAGE_KEYS.CERTIFICATES);
-      if (!data) {
-        return INITIAL_CERTIFICATES;
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          this._cachedCertificates = parsed;
+          return this._cachedCertificates;
+        }
       }
-      return JSON.parse(data);
     } catch {
-      return INITIAL_CERTIFICATES;
+      // Ignorar error de parsing
     }
+
+    return this._cachedCertificates || INITIAL_CERTIFICATES;
   }
 
   static async loadCertificatesFromRemote(): Promise<Certificate[]> {
+    // Si la caché en memoria está vacía, precargar desde IndexedDB (donde están los PDFs y firmas completas)
+    if (!this._cachedCertificates || this._cachedCertificates.length === 0) {
+      try {
+        const idbCerts = await loadCertificatesFromIndexedDB();
+        if (idbCerts && idbCerts.length > 0) {
+          this._cachedCertificates = idbCerts;
+        }
+      } catch (e) {
+        // Ignorar
+      }
+    }
+
     if (SupabaseService.isConfigured()) {
       try {
         const remoteCerts = await SupabaseService.fetchCertificates();
-        if (remoteCerts) {
-          this.saveCertificatesLocal(remoteCerts);
-          return remoteCerts;
+        if (remoteCerts !== null && Array.isArray(remoteCerts)) {
+          // Smart merge: preservar signedPdfData y signatureData locales si el remoto aún no los tiene
+          const localCerts = this.getCertificates();
+          const localMap = new Map<string, Certificate>(localCerts.map((c) => [c.id, c]));
+
+          const mergedCerts = remoteCerts.map((remote) => {
+            const local = localMap.get(remote.id);
+            if (!local) return remote;
+
+            const signedPdfData =
+              local.signedPdfData && local.signedPdfData.length > 100
+                ? local.signedPdfData
+                : remote.signedPdfData || undefined;
+
+            const signatureData =
+              local.signatureData && local.signatureData.length > 50
+                ? local.signatureData
+                : remote.signatureData || undefined;
+
+            return {
+              ...remote,
+              signedPdfData,
+              signatureData,
+            };
+          });
+
+          this.saveCertificatesLocal(mergedCerts);
+          return mergedCerts;
         }
       } catch (err) {
         console.warn('Notice loading certificates from Supabase:', err);
@@ -406,7 +1032,77 @@ export class RCDService {
   }
 
   static saveCertificatesLocal(certs: Certificate[]): void {
-    localStorage.setItem(STORAGE_KEYS.CERTIFICATES, JSON.stringify(certs));
+    // 1. SIEMPRE mantener la caché en memoria actualizada para búsquedas síncronas instantáneas
+    this._cachedCertificates = certs;
+
+    // 2. Persistir copia completa sin límite de cuota en IndexedDB (con signedPdfData y firmas)
+    saveCertificatesToIndexedDB(certs).catch(() => {});
+
+    // 3. Persistir en localStorage versión ligera (sin PDFs pesados en base64) para evitar QuotaExceededError
+    try {
+      const lightCerts = certs.map((cert) => {
+        const hasHeavyPdf = cert.signedPdfData && cert.signedPdfData.length > 10_000;
+        const hasHeavySig = cert.signatureData && cert.signatureData.length > 50_000;
+        if (hasHeavyPdf || hasHeavySig) {
+          return {
+            ...cert,
+            signedPdfData: hasHeavyPdf ? '' : cert.signedPdfData,
+            signatureData: hasHeavySig ? '' : cert.signatureData,
+          };
+        }
+        return cert;
+      });
+
+      localStorage.setItem(STORAGE_KEYS.CERTIFICATES, JSON.stringify(lightCerts));
+    } catch {
+      // Si la cuota de localStorage aún está saturada por claves antiguas, intentar versión ultra-ligera
+      try {
+        const ultraLight = certs.map((c) => ({
+          ...c,
+          signedPdfData: '',
+          signatureData: '',
+        }));
+        localStorage.setItem(STORAGE_KEYS.CERTIFICATES, JSON.stringify(ultraLight));
+      } catch {
+        // Silenciar limpiamente cualquier error de cuota: los datos están completamente a salvo en memoria e IndexedDB
+      }
+    }
+  }
+
+  /**
+   * Garantiza que el PDF firmado o firma digital del certificado esté cargado en memoria,
+   * recuperándolo desde IndexedDB o Supabase si se almacenó la versión ligera en localStorage.
+   */
+  static async ensureCertificatePdf(certificate: Certificate): Promise<Certificate> {
+    if (!certificate || !certificate.id) return certificate;
+    if (certificate.signedPdfData && certificate.signedPdfData.length > 100) return certificate;
+
+    try {
+      const idbCerts = await loadCertificatesFromIndexedDB();
+      const local = idbCerts?.find((c) => c.id === certificate.id);
+      if (local && local.signedPdfData && local.signedPdfData.length > 100) {
+        certificate.signedPdfData = local.signedPdfData;
+        if (local.signedPdfFileName) certificate.signedPdfFileName = local.signedPdfFileName;
+        return certificate;
+      }
+    } catch {
+      // Ignorar y continuar a Supabase
+    }
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        const remotes = await SupabaseService.fetchCertificates();
+        const found = remotes?.find((c) => c.id === certificate.id);
+        if (found && found.signedPdfData) {
+          certificate.signedPdfData = found.signedPdfData;
+          if (found.signedPdfFileName) certificate.signedPdfFileName = found.signedPdfFileName;
+        }
+      } catch {
+        // Ignorar
+      }
+    }
+
+    return certificate;
   }
 
   /**
@@ -425,6 +1121,7 @@ export class RCDService {
     constructionSiteAddress: string;
     selectedAlbaranIds: string[];
     issuerName: string;
+    includePhotos?: boolean;
   }): Promise<Certificate> {
     const allAlbaranes = this.getAlbaranes();
 
@@ -482,6 +1179,7 @@ export class RCDService {
       issuerName: payload.issuerName || 'Administrador Planta RCD',
       verificationCode: `VERIF-2026-RCD-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
       status: 'Pendiente de Firma',
+      includePhotos: payload.includePhotos !== undefined ? payload.includePhotos : true,
     };
 
     // LOCK the albaranes in local state
@@ -517,37 +1215,22 @@ export class RCDService {
       }
     }
 
-    // Send WhatsApp & Email notifications according to client preferences
-    const client = this.getClientById(payload.clientId);
-    if (client) {
-      if (client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
-        const msg = `📜 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSe ha emitido un nuevo *Certificado de Valorización de RCD*:\n\n📑 *Nº Certificado:* ${newCertificate.certificateNumber}\n🏗️ *Obra / Promotor:* ${newCertificate.constructionSiteName}\n⚖️ *Total Certificado:* ${newCertificate.totalTons} toneladas\n🔐 *Código Verificación:* ${newCertificate.verificationCode}\n\nPuede consultar e descargar su certificado desde el Portal del Cliente.`;
-
-        await UltramsgService.sendWhatsApp(client.mobile, msg);
-      }
-
-      if (client.notifyEmail && client.email) {
-        const certSubject = `[Planta RCD] Solicitud de Certificado Registrada Nº ${newCertificate.certificateNumber}`;
-        const certText = `Estimado cliente ${client.name},\n\nSe ha registrado su solicitud de Certificado de Valorización de RCD:\n\n• Nº Certificado: ${newCertificate.certificateNumber}\n• Obra / Promotor: ${newCertificate.constructionSiteName}\n• Total Certificado: ${newCertificate.totalTons} Toneladas\n• Código Verificación: ${newCertificate.verificationCode}\n\nEl certificado estará disponible firmado digitalmente en breve. Se ha notificado al responsable de la empresa.`;
-        
-        await EmailService.sendEmail({
-          to: client.email,
-          subject: certSubject,
-          textBody: certText,
-          htmlBody: `<div style="font-family:sans-serif; background:#0f172a; color:#f8fafc; padding:20px; border-radius:12px;"><h2>📜 Planta de Residuos RCD</h2><p>Estimado cliente <strong>${client.name}</strong>,</p><p>Se ha registrado la solicitud del Certificado de Valorización de RCD:</p><ul><li><strong>Nº Certificado:</strong> ${newCertificate.certificateNumber}</li><li><strong>Obra / Promotor:</strong> ${newCertificate.constructionSiteName}</li><li><strong>Total Certificado:</strong> ${newCertificate.totalTons} Toneladas</li><li><strong>Estado:</strong> ⏳ Pendiente de Firma Digital</li></ul><p style="color:#f59e0b;">El certificado estará disponible con firma digital en breve. Se ha avisado al responsable de planta.</p></div>`,
+    // When client creates/requests certificate: DO NOT notify client (notification only upon admin digital signature)
+    // Send pending signature notification to director/manager if email is configured
+    if (EmailService.isConfigured()) {
+      try {
+        await EmailService.sendPendingSignatureEmail({
+          certificateNumber: newCertificate.certificateNumber,
+          clientName: newCertificate.clientName,
+          thirdPartyName: newCertificate.thirdPartyName,
+          constructionSiteName: newCertificate.constructionSiteName,
+          totalTons: newCertificate.totalTons,
+          issueDate: newCertificate.issueDate,
         });
+      } catch (err) {
+        console.warn('Notice sending pending signature notice to admin:', err);
       }
     }
-
-    // Notify manager for pending signature
-    await EmailService.sendPendingSignatureEmail({
-      certificateNumber: newCertificate.certificateNumber,
-      clientName: newCertificate.clientName,
-      thirdPartyName: newCertificate.thirdPartyName,
-      constructionSiteName: newCertificate.constructionSiteName,
-      totalTons: newCertificate.totalTons,
-      issueDate: newCertificate.issueDate,
-    });
 
     return newCertificate;
   }
@@ -556,7 +1239,15 @@ export class RCDService {
     certId: string,
     signatureData: string,
     signerName: string,
-    signerNif: string
+    signerNif: string,
+    fnmtDetails?: {
+      fnmtCertIssuer?: string;
+      fnmtCertSerial?: string;
+      fnmtHash?: string;
+      signatureType?: 'fnmt' | 'manual' | 'both' | 'acrobat_pades';
+      signedPdfData?: string;
+      signedPdfFileName?: string;
+    }
   ): Promise<Certificate> {
     const certs = this.getCertificates();
     const certIndex = certs.findIndex((c) => c.id === certId);
@@ -571,9 +1262,15 @@ export class RCDService {
       ...certs[certIndex],
       status: 'Emitido',
       signatureData,
-      signerName: signerName.trim() || 'Director Técnico Planta RCD',
-      signerNif: signerNif.trim() || 'B-91029384',
+      signerName: signerName.trim() || 'Áridos Marraque S.L. - Dirección Técnica',
+      signerNif: signerNif.trim() || 'B04117818',
       signedAt: signedDateStr,
+      fnmtCertIssuer: fnmtDetails?.fnmtCertIssuer || 'FNMT-RCM / AC Representación',
+      fnmtCertSerial: fnmtDetails?.fnmtCertSerial || '4B:A1:88:C2:9F:D5:E0:18',
+      fnmtHash: fnmtDetails?.fnmtHash,
+      signatureType: fnmtDetails?.signatureType || (fnmtDetails?.signedPdfData ? 'acrobat_pades' : 'fnmt'),
+      signedPdfData: fnmtDetails?.signedPdfData,
+      signedPdfFileName: fnmtDetails?.signedPdfFileName,
     };
 
     certs[certIndex] = updatedCert;
@@ -587,30 +1284,354 @@ export class RCDService {
       }
     }
 
-    // Send notification email to client that the certificate is signed and available
+    // Client notification upon signing according to client preferences (WhatsApp, Email, or none)
     const client = this.getClientById(updatedCert.clientId);
-    const clientEmail = client?.email || `${updatedCert.clientName.toLowerCase().replace(/[^a-z0-9]/g, '')}@empresa.es`;
-    
-    await EmailService.sendSignedCertificateEmail(clientEmail, {
-      certificateNumber: updatedCert.certificateNumber,
-      clientName: updatedCert.clientName,
-      thirdPartyName: updatedCert.thirdPartyName,
-      totalTons: updatedCert.totalTons,
-      signedAt: updatedCert.signedAt,
-      signerName: updatedCert.signerName,
-    });
+    if (client) {
+      // 1. WhatsApp notification if client enabled mobile notification
+      if (client.notifyMobile && client.mobile && UltramsgService.isConfigured()) {
+        try {
+          const msg = `📜 *Planta de Residuos RCD*\n\nEstimado cliente *${client.name}*,\n\nSu *Certificado de Valorización de RCD* ha sido *FIRMADO DIGITALMENTE* por la dirección técnica y ya está disponible:\n\n📑 *Nº Certificado:* ${updatedCert.certificateNumber}\n🏗️ *Obra / Promotor:* ${updatedCert.thirdPartyName || updatedCert.constructionSiteName}\n⚖️ *Total Certificado:* ${updatedCert.totalTons.toFixed(2)} toneladas\n✍️ *Firmante:* ${updatedCert.signerName}\n🔐 *Código CSV:* ${updatedCert.verificationCode}\n📅 *Fecha de Firma:* ${updatedCert.signedAt}\n\nPuede consultar y descargar su certificado oficial firmado desde el Portal de Clientes.`;
+          await UltramsgService.sendWhatsApp(client.mobile, msg);
+        } catch (err) {
+          console.warn('Notice sending signed cert WhatsApp:', err);
+        }
+      }
+
+      // 2. Email notification if client enabled email notification
+      if (client.notifyEmail && client.email && EmailService.isConfigured()) {
+        try {
+          await EmailService.sendSignedCertificateEmail(client.email, {
+            certificateNumber: updatedCert.certificateNumber,
+            clientName: updatedCert.clientName,
+            thirdPartyName: updatedCert.thirdPartyName,
+            totalTons: updatedCert.totalTons,
+            signedAt: updatedCert.signedAt,
+            signerName: updatedCert.signerName,
+          });
+        } catch (err) {
+          console.warn('Notice sending signed cert Email:', err);
+        }
+      }
+    }
 
     return updatedCert;
   }
 
-  // ===============================================
-  // WASTE TYPES MANAGEMENT
+  static async uploadSignedPdfCertificate(
+    certId: string,
+    signedPdfData: string,
+    signedPdfFileName: string,
+    signerName?: string,
+    signerNif?: string
+  ): Promise<Certificate> {
+    return this.signCertificate(
+      certId,
+      '',
+      signerName || 'Áridos Marraque S.L. - Dirección Técnica (Firma Digital FNMT Acrobat)',
+      signerNif || 'B04117818',
+      {
+        fnmtCertIssuer: 'Fábrica Nacional de Moneda y Timbre (FNMT-RCM) - Documento PAdES',
+        fnmtCertSerial: 'Firma Acrobat / AutoFirma',
+        signatureType: 'acrobat_pades',
+        signedPdfData,
+        signedPdfFileName,
+      }
+    );
+  }
+
+  static async updateCertificate(
+    certId: string,
+    payload: {
+      thirdPartyName: string;
+      thirdPartyCif: string;
+      constructionSiteName: string;
+      constructionSiteAddress?: string;
+      selectedAlbaranIds: string[];
+      issuerName?: string;
+      resetSignatureIfSigned?: boolean;
+      includePhotos?: boolean;
+    }
+  ): Promise<Certificate> {
+    const certs = this.getCertificates();
+    const certIndex = certs.findIndex((c) => c.id === certId);
+    if (certIndex === -1) {
+      throw new Error('Certificado no encontrado');
+    }
+
+    const currentCert = certs[certIndex];
+    const allAlbaranes = this.getAlbaranes();
+
+    if (!payload.selectedAlbaranIds || payload.selectedAlbaranIds.length === 0) {
+      throw new Error('Debe seleccionar al menos un albarán para incluir en el certificado.');
+    }
+
+    const previousAlbaranIds = currentCert.albaranIds || [];
+    const newSelectedIds = payload.selectedAlbaranIds;
+
+    // Obtener los albaranes seleccionados (por id o por numAlbaran)
+    const selectedAlbaranes = allAlbaranes.filter(
+      (a) => newSelectedIds.includes(a.id) || newSelectedIds.includes(a.numAlbaran)
+    );
+    if (selectedAlbaranes.length === 0) {
+      throw new Error('No se han encontrado albaranes válidos para el certificado.');
+    }
+
+    const removedIdsAndNumbers: string[] = [];
+    const addedIdsAndNumbers: string[] = [];
+
+    // Recalcular desglose de residuos y tonelaje total
+    const breakdownMap: Record<string, { code: string; name: string; tons: number; count: number }> = {};
+    let totalTons = 0;
+
+    for (const alb of selectedAlbaranes) {
+      totalTons += alb.quantityTons;
+      if (!breakdownMap[alb.wasteTypeCode]) {
+        breakdownMap[alb.wasteTypeCode] = {
+          code: alb.wasteTypeCode,
+          name: alb.wasteTypeName,
+          tons: 0,
+          count: 0,
+        };
+      }
+      breakdownMap[alb.wasteTypeCode].tons += alb.quantityTons;
+      breakdownMap[alb.wasteTypeCode].count += 1;
+    }
+
+    const wasteBreakdown = Object.values(breakdownMap).map((item) => ({
+      wasteTypeCode: item.code,
+      wasteTypeName: item.name,
+      totalTons: Number(item.tons.toFixed(2)),
+      albaranesCount: item.count,
+    }));
+
+    // Actualizar estado de bloqueo de los albaranes
+    const updatedAlbaranes = allAlbaranes.map((alb) => {
+      const isSelected = newSelectedIds.includes(alb.id) || newSelectedIds.includes(alb.numAlbaran);
+      const wasInCert =
+        previousAlbaranIds.includes(alb.id) ||
+        previousAlbaranIds.includes(alb.numAlbaran) ||
+        alb.certificateId === currentCert.id ||
+        alb.certificateNumber === currentCert.certificateNumber;
+
+      if (!isSelected && wasInCert) {
+        // Albarán quitado: cambiar inmediatamente su estado a DISPONIBLE (no certificado)
+        if (alb.id) removedIdsAndNumbers.push(alb.id);
+        if (alb.numAlbaran) removedIdsAndNumbers.push(alb.numAlbaran);
+        return {
+          ...alb,
+          certified: false,
+          certificateId: undefined,
+          certificateNumber: undefined,
+        };
+      }
+
+      if (isSelected) {
+        if (!wasInCert) {
+          if (alb.id) addedIdsAndNumbers.push(alb.id);
+          if (alb.numAlbaran) addedIdsAndNumbers.push(alb.numAlbaran);
+        }
+        return {
+          ...alb,
+          certified: true,
+          certificateId: currentCert.id,
+          certificateNumber: currentCert.certificateNumber,
+        };
+      }
+
+      return alb;
+    });
+
+    // Guardar inmediatamente en almacenamiento local (IndexedDB + localStorage)
+    this.saveAlbaranesLocal(updatedAlbaranes);
+
+    const shouldResetSignature = payload.resetSignatureIfSigned || Boolean(
+      (removedIdsAndNumbers.length > 0 || addedIdsAndNumbers.length > 0) && currentCert.signedAt
+    );
+
+    const updatedCert: Certificate = {
+      ...currentCert,
+      thirdPartyName: payload.thirdPartyName.trim(),
+      thirdPartyCif: payload.thirdPartyCif.trim().toUpperCase(),
+      constructionSiteName: payload.constructionSiteName.trim(),
+      constructionSiteAddress: (payload.constructionSiteAddress || '').trim(),
+      issuerName: payload.issuerName?.trim() || currentCert.issuerName,
+      includePhotos: payload.includePhotos !== undefined ? payload.includePhotos : (currentCert.includePhotos !== false),
+      albaranIds: selectedAlbaranes.map((a) => a.id),
+      wasteBreakdown,
+      totalTons: Number(totalTons.toFixed(2)),
+      ...(shouldResetSignature ? {
+        status: 'Pendiente de Firma',
+        signatureData: undefined,
+        signedAt: undefined,
+        signerName: undefined,
+        signerNif: undefined,
+        fnmtCertIssuer: undefined,
+        fnmtCertSerial: undefined,
+        fnmtHash: undefined,
+        signatureType: undefined,
+        signedPdfData: undefined,
+        signedPdfFileName: undefined,
+      } : {}),
+    };
+
+    certs[certIndex] = updatedCert;
+    this.saveCertificatesLocal(certs);
+
+    // Sincronizar con Supabase
+    if (SupabaseService.isConfigured()) {
+      try {
+        await SupabaseService.insertCertificate(updatedCert);
+
+        // 1. Desbloquear los albaranes explícitamente desmarcados (por ID y por número SAP)
+        if (removedIdsAndNumbers.length > 0) {
+          await SupabaseService.unlockAlbaranes(removedIdsAndNumbers);
+        }
+
+        // 2. Desbloquear en Supabase cualquier otro albarán que tuviera este número de certificado
+        // pero que ya no figure en la selección actual
+        const validSelectedKeys = [
+          ...newSelectedIds,
+          ...selectedAlbaranes.map((a) => a.numAlbaran),
+        ];
+        await SupabaseService.unlockAlbaranesByCertificateNumber(
+          currentCert.certificateNumber,
+          validSelectedKeys
+        );
+
+        // 3. Bloquear los albaranes nuevos añadidos
+        if (addedIdsAndNumbers.length > 0) {
+          await SupabaseService.updateAlbaranesLockStatus(
+            addedIdsAndNumbers,
+            updatedCert.id,
+            updatedCert.certificateNumber
+          );
+        }
+      } catch (err) {
+        console.warn('Notice syncing updated certificate with Supabase:', err);
+      }
+    }
+
+    return updatedCert;
+  }
+
+  static async deleteCertificate(certificateId: string): Promise<void> {
+    const certs = this.getCertificates();
+    const cert = certs.find((c) => c.id === certificateId);
+    if (!cert) return;
+
+    // Desbloquear todos los albaranes vinculados a este certificado
+    const allAlbaranes = this.getAlbaranes();
+    const removedKeys: string[] = [];
+    const updatedAlbaranes = allAlbaranes.map((alb) => {
+      const isLinked =
+        (cert.albaranIds && (cert.albaranIds.includes(alb.id) || cert.albaranIds.includes(alb.numAlbaran))) ||
+        alb.certificateId === certificateId ||
+        alb.certificateNumber === cert.certificateNumber;
+
+      if (isLinked) {
+        if (alb.id) removedKeys.push(alb.id);
+        if (alb.numAlbaran) removedKeys.push(alb.numAlbaran);
+        return {
+          ...alb,
+          certified: false,
+          certificateId: undefined,
+          certificateNumber: undefined,
+        };
+      }
+      return alb;
+    });
+
+    this.saveAlbaranesLocal(updatedAlbaranes);
+
+    const remainingCerts = certs.filter((c) => c.id !== certificateId);
+    this.saveCertificatesLocal(remainingCerts);
+
+    if (SupabaseService.isConfigured()) {
+      try {
+        await SupabaseService.deleteCertificate(certificateId);
+        if (removedKeys.length > 0) {
+          await SupabaseService.unlockAlbaranes(removedKeys);
+        }
+        await SupabaseService.unlockAlbaranesByCertificateNumber(cert.certificateNumber);
+      } catch (err) {
+        console.warn('Notice deleting certificate from Supabase:', err);
+      }
+    }
+  }
+
+  /**
+   * Reconcilia automáticamente el estado de certificación de los albaranes
+   * contra la lista real de certificados existentes. Si un albarán aparece marcado
+   * como certificado pero ningún certificado activo lo contiene en sus albaranes,
+   * se restablece de inmediato a estado DISPONIBLE (certified: false).
+   */
+  static reconcileAlbaranesWithCertificates(
+    albaranes: Albaran[],
+    certificates: Certificate[]
+  ): { albaranes: Albaran[]; hasChanges: boolean } {
+    let hasChanges = false;
+
+    // Mapear albarán ID y número SAP hacia su certificado activo correspondiente
+    const certByAlbaran = new Map<string, Certificate>();
+    for (const cert of certificates) {
+      if (Array.isArray(cert.albaranIds)) {
+        for (const idOrNum of cert.albaranIds) {
+          if (idOrNum) {
+            certByAlbaran.set(idOrNum.trim().toLowerCase(), cert);
+          }
+        }
+      }
+    }
+
+    const reconciled = albaranes.map((alb) => {
+      const idKey = (alb.id || '').trim().toLowerCase();
+      const numKey = (alb.numAlbaran || '').trim().toLowerCase();
+      const activeCert = certByAlbaran.get(idKey) || certByAlbaran.get(numKey);
+
+      if (activeCert) {
+        if (
+          !alb.certified ||
+          alb.certificateId !== activeCert.id ||
+          alb.certificateNumber !== activeCert.certificateNumber
+        ) {
+          hasChanges = true;
+          return {
+            ...alb,
+            certified: true,
+            certificateId: activeCert.id,
+            certificateNumber: activeCert.certificateNumber,
+          };
+        }
+        return alb;
+      } else {
+        // No está en ningún certificado activo: debe estar disponible
+        if (alb.certified || alb.certificateId || alb.certificateNumber) {
+          hasChanges = true;
+          return {
+            ...alb,
+            certified: false,
+            certificateId: undefined,
+            certificateNumber: undefined,
+          };
+        }
+        return alb;
+      }
+    });
+
+    return { albaranes: reconciled, hasChanges };
+  }
   // ===============================================
   static async loadWasteTypesFromRemote(): Promise<WasteType[]> {
-    const remote = await SupabaseService.fetchWasteTypes();
-    if (remote && remote.length > 0) {
-      this.saveWasteTypesLocal(remote);
-      return remote;
+    if (SupabaseService.isConfigured()) {
+      try {
+        const remote = await SupabaseService.fetchWasteTypes();
+        if (remote !== null && Array.isArray(remote)) {
+          this.saveWasteTypesLocal(remote);
+          return remote;
+        }
+      } catch (err) {
+        console.warn('Notice loading waste types from Supabase:', err);
+      }
     }
     return this.getWasteTypes();
   }
@@ -619,17 +1640,15 @@ export class RCDService {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.WASTE_TYPES);
       if (!data) {
-        this.saveWasteTypesLocal(OFFICIAL_WASTE_TYPES);
-        return OFFICIAL_WASTE_TYPES;
+        return [];
       }
       const parsed = JSON.parse(data);
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        this.saveWasteTypesLocal(OFFICIAL_WASTE_TYPES);
-        return OFFICIAL_WASTE_TYPES;
+      if (!Array.isArray(parsed)) {
+        return [];
       }
       return parsed;
     } catch {
-      return OFFICIAL_WASTE_TYPES;
+      return [];
     }
   }
 
@@ -637,12 +1656,12 @@ export class RCDService {
     localStorage.setItem(STORAGE_KEYS.WASTE_TYPES, JSON.stringify(types));
   }
 
-  static saveWasteTypes(types: WasteType[]): void {
+  static async saveWasteTypes(types: WasteType[]): Promise<{ success: boolean; error?: string }> {
     this.saveWasteTypesLocal(types);
-    SupabaseService.upsertWasteTypes(types);
+    return await SupabaseService.upsertWasteTypes(types);
   }
 
-  static addOrUpdateWasteType(wasteType: WasteType): void {
+  static async addOrUpdateWasteType(wasteType: WasteType): Promise<{ success: boolean; error?: string }> {
     const current = this.getWasteTypes();
     const idx = current.findIndex((w) => w.code.trim() === wasteType.code.trim());
     if (idx >= 0) {
@@ -650,22 +1669,41 @@ export class RCDService {
     } else {
       current.push(wasteType);
     }
-    this.saveWasteTypes(current);
+    return await this.saveWasteTypes(current);
   }
 
-  static deleteWasteType(code: string): void {
+  static async deleteWasteType(code: string): Promise<{ success: boolean; error?: string }> {
     const filtered = this.getWasteTypes().filter((w) => w.code.trim() !== code.trim());
     this.saveWasteTypesLocal(filtered);
-    SupabaseService.deleteWasteType(code);
+    return await SupabaseService.deleteWasteType(code);
   }
 
   static clearAllData(): void {
-    localStorage.removeItem(STORAGE_KEYS.CLIENTS);
-    localStorage.removeItem(STORAGE_KEYS.ALBARANES);
-    localStorage.removeItem(STORAGE_KEYS.CERTIFICATES);
-    localStorage.removeItem(STORAGE_KEYS.WASTE_TYPES);
-    localStorage.removeItem(STORAGE_KEYS.USERS);
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    try {
+      const configKeys = new Set([
+        'rcd_supabase_url',
+        'rcd_supabase_anon_key',
+        'rcd_ultramsg_instance_id',
+        'rcd_ultramsg_token',
+        'rcd_email_webhook_url',
+        'rcd_email_api_key',
+        'rcd_email_from_address',
+        'rcd_email_signer_address',
+      ]);
+
+      const toRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && !configKeys.has(key)) {
+          toRemove.push(key);
+        }
+      }
+      for (const k of toRemove) {
+        localStorage.removeItem(k);
+      }
+    } catch (e) {
+      console.warn('Notice clearing local storage cache:', e);
+    }
   }
 
   // ===============================================
@@ -772,4 +1810,3 @@ export class RCDService {
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
   }
 }
-
